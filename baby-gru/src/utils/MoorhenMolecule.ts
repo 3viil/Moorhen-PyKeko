@@ -1115,6 +1115,10 @@ export class MoorhenMolecule {
                     })
                 );
                 ligandDicts.forEach(ligandDict => this.cacheLigandDict(ligandDict));
+                // After loading dictionaries, mark atoms dirty so next redraw includes new bonds
+                if (ligandDicts.some(d => d)) {
+                    this.setAtomsDirty(true);
+                }
             } catch (err) {
                 console.log(err);
                 console.warn("Error in loadMissingMonomers...");
@@ -2049,6 +2053,8 @@ export class MoorhenMolecule {
         );
 
         this.cacheLigandDict(fileContent);
+        // Mark atoms dirty so next redraw re-fetches bonds with the new dictionary
+        this.setAtomsDirty(true);
     }
 
     /**
