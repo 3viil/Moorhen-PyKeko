@@ -169,7 +169,7 @@ export const DEFAULT_SHORTCUTS: { [key: string]: Shortcut } = {
         viewOnly: true,
     },
     label_atom: {
-        modifiers: [],
+        modifiers: ["shiftKey"],
         keyPress: "l",
         label: "Label an atom on click",
         viewOnly: true,
@@ -278,9 +278,9 @@ export const DEFAULT_SHORTCUTS: { [key: string]: Shortcut } = {
     },
     go_to_ligand: {
         modifiers: [],
-        keyPress: "x",
-        label: "Go to next ligand",
-        viewOnly: false,
+        keyPress: "l",
+        label: "Go to next ligand (cycles)",
+        viewOnly: true,
     },
     add_terminal_residue_coot: {
         modifiers: [],

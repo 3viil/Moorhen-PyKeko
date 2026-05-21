@@ -16,6 +16,9 @@ import { setOrigin, setZoom, setQuat, setShortCutHelp,setClipStart, setClipEnd, 
 import { cidToSpec, getCentreAtom } from "./utils"
 import { setShownControl, RootState, enqueueSnackbar  } from '@/store';
 
+// Module-level cycle index for go_to_ligand shortcut. Starts at -1 so first press goes to index 0.
+let ligandCycleIdx = -1;
+
 const apresEdit = (molecule: moorhen.Molecule, glRef: React.RefObject<webGL.MGWebGL>, dispatch: Dispatch<AnyAction>) => {
     molecule.setAtomsDirty(true)
     molecule.redraw()
@@ -563,21 +566,30 @@ export const moorhenKeyPress = (
     }
 
     else if (action === 'go_to_ligand') {
-        if (molecules.length > 0) {
-            commandCentre.current.cootCommand({
-                returnType: "interesting_places_data",
-                command: "get_interesting_places",
-                commandArgs: [molecules[0].molNo, "ligand"],
-            }, false)
-            .then(response => {
-                const places = response.data.result.result
-                if (places && places.length > 0) {
-                    const place = places[0]
-                    dispatch(setOrigin([-place.coordX, -place.coordY, -place.coordZ]))
-                }
-            })
+        // Collect all ligands across all loaded molecules
+        const allLigands: { molecule: moorhen.Molecule; cid: string; label: string }[] = []
+        molecules.forEach(m => {
+            if (m.ligands) {
+                m.ligands.forEach(l => {
+                    allLigands.push({
+                        molecule: m,
+                        cid: l.cid,
+                        label: `${m.name} ${l.resName} ${l.chainName}/${l.resNum}`,
+                    })
+                })
+            }
+        })
+        if (allLigands.length === 0) {
+            if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No ligands found", variant: "info" }))
+            return false
         }
-        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Go to ligand",  variant: "info"}))
+        ligandCycleIdx = (ligandCycleIdx + 1) % allLigands.length
+        const target = allLigands[ligandCycleIdx]
+        target.molecule.centreAndAlignViewOn(target.cid, true)
+        if (showShortcutToast) dispatch(enqueueSnackbar({
+            message: `Ligand ${ligandCycleIdx + 1}/${allLigands.length}: ${target.label}`,
+            variant: "info",
+        }))
         return false
     }
 
