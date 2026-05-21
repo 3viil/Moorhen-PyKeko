@@ -171,6 +171,7 @@ ${coot_src}/api/rigid-body-fit.cc
 ${coot_src}/api/molecules-container-bucca-ml-growing.cc
 ${coot_src}/api/molecules-container-mmrrcc.cc
 ${coot_src}/api/molecules-container-superpose.cc
+${coot_src}/api/molecules-container-ncs-ghost.cc
 ${coot_src}/api/coot-molecule-validation.cc
 ${coot_src}/api/molecules-container-modelling.cc
 ${coot_src}/api/add-terminal-residue.cc

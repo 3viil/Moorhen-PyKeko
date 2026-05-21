@@ -2622,6 +2622,27 @@ export class MoorhenMolecule {
     }
 
     /**
+     * Get the SSM superposition matrix that maps `copyChain` onto `masterChain`
+     * within this molecule. Atoms are NOT moved.
+     * @returns Array of 16 numbers (4x4 row-major) or null on failure
+     */
+    async getNcsGhostMatrix(masterChain: string, copyChain: string): Promise<number[] | null> {
+        const result = (await this.commandCentre.current.cootCommand(
+            {
+                returnType: "float_array",
+                command: "get_ncs_ghost_matrix",
+                commandArgs: [this.molNo, masterChain, copyChain],
+            },
+            false
+        )) as moorhen.WorkerResponse<number[]>;
+        const arr = result.data.result.result;
+        if (!arr || arr.length !== 16) {
+            return null;
+        }
+        return arr;
+    }
+
+    /**
      * A function to get the number of atoms in the current molecule
      * @returns {Promise<number>} The number of atoms in the molecule
      */

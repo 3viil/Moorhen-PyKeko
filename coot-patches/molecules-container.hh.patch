@@ -1,0 +1,22 @@
+diff --git a/api/molecules-container.hh b/api/molecules-container.hh
+index eef3a9332..b0e15fc14 100644
+--- a/api/molecules-container.hh
++++ b/api/molecules-container.hh
+@@ -1560,6 +1560,17 @@ public:
+    superpose_results_t SSM_superpose(int imol_ref, const std::string &chain_id_ref,
+                                      int imol_mov, const std::string &chain_id_mov);
+ 
++   //! Compute SSM superposition matrix that maps `copy_chain` onto `master_chain`
++   //! within the same molecule, WITHOUT moving any atoms. Used for NCS ghost overlays.
++   //!
++   //! @param imol the molecule index
++   //! @param master_chain the chain ID to align onto
++   //! @param copy_chain the chain ID whose transformation matrix to compute
++   //! @return 16 floats (4x4 matrix, row-major). Empty vector on failure.
++   std::vector<float> get_ncs_ghost_matrix(int imol,
++                                            const std::string &master_chain,
++                                            const std::string &copy_chain);
++
+    //! Superpose using LSQ - setup the matches
+    //!
+    //! @param chain_id_ref the chain ID for the reference chain
