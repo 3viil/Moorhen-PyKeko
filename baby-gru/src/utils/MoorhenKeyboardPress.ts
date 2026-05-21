@@ -585,7 +585,7 @@ export const moorhenKeyPress = (
         }
         ligandCycleIdx = (ligandCycleIdx + 1) % allLigands.length
         const target = allLigands[ligandCycleIdx]
-        target.molecule.centreAndAlignViewOn(target.cid, true)
+        target.molecule.centreOn(target.cid, true, true)
         if (showShortcutToast) dispatch(enqueueSnackbar({
             message: `Ligand ${ligandCycleIdx + 1}/${allLigands.length}: ${target.label}`,
             variant: "info",
