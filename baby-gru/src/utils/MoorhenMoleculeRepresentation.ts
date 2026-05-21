@@ -176,7 +176,7 @@ export class MoleculeRepresentation {
             atomRadiusBondRatio: 1,
             showAniso: false,
             showOrtep: false,
-            showHs: true,
+            showHs: false,
         };
         this.useDefaultGaussianSurfaceSettings = true;
         this.gaussianSurfaceSettings = {

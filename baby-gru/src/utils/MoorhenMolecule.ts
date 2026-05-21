@@ -183,7 +183,7 @@ export class MoorhenMolecule {
             atomRadiusBondRatio: 1,
             showAniso: false,
             showOrtep: false,
-            showHs: true,
+            showHs: false,
         };
         this.defaultM2tParams = {
             ribbonStyleCoilThickness: 0.3,

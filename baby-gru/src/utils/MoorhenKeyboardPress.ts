@@ -436,5 +436,150 @@ export const moorhenKeyPress = (
         return doAtomInfo()
     }
 
+    else if (action === 'auto_fit_rotamer_coot' && activeMap && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [chosenMolecule.molNo, chosenAtom.chain_id, chosenAtom.res_no, chosenAtom.ins_code, chosenAtom.alt_conf, activeMap.molNo]
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Autofit rotamer",  variant: "info"}))
+        return doShortCut('auto_fit_rotamer', formatArgs)
+    }
+
+    else if (action === 'refine_residue' && activeMap && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [chosenMolecule.molNo, `//${chosenAtom.chain_id}/${chosenAtom.res_no}`, "SINGLE", 4000]
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Refine residue",  variant: "info"}))
+        return doShortCut('refine_residues_using_atom_cid', formatArgs)
+    }
+
+    else if (action === 'pepflip_coot' && activeMap && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [chosenMolecule.molNo, `//${chosenAtom.chain_id}/${chosenAtom.res_no}/${chosenAtom.atom_name}`, '']
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Flip peptide",  variant: "info"}))
+        return doShortCut('flipPeptide_cid', formatArgs)
+    }
+
+    else if (action === 'add_terminal_residue_coot' && activeMap && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [chosenMolecule.molNo, `//${chosenAtom.chain_id}/${chosenAtom.res_no}`]
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Add terminal residue",  variant: "info"}))
+        return doShortCut('add_terminal_residue_directly_using_cid', formatArgs)
+    }
+
+    else if (action === 'add_water' && activeMap && !viewOnly && molecules.length > 0) {
+        const targetMolecule = molecules[0]
+        commandCentre.current.cootCommand({
+            returnType: "number",
+            command: "add_waters",
+            commandArgs: [targetMolecule.molNo, activeMap.molNo],
+            changesMolecules: [targetMolecule.molNo],
+        }, true).then(_ => {
+            apresEdit(targetMolecule, glRef, dispatch)
+        })
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Add waters",  variant: "info"}))
+        return false
+    }
+
+    else if (action === 'delete_sidechain' && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [
+                chosenMolecule.molNo,
+                `/1/${chosenAtom.chain_id}/${chosenAtom.res_no}/!N,CA,C,O,CB,H,HA${chosenAtom.alt_conf === "" ? "" : ":" + chosenAtom.alt_conf}`,
+                'LITERAL'
+            ]
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Delete sidechain",  variant: "info"}))
+        return doShortCut('delete_using_cid', formatArgs)
+    }
+
+    else if (action === 'fill_partial' && activeMap && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [chosenMolecule.molNo, chosenAtom.chain_id, chosenAtom.res_no, chosenAtom.ins_code]
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Fill partial residue",  variant: "info"}))
+        return doShortCut('fill_partial_residue', formatArgs)
+    }
+
+    else if (action === 'jiggle_fit' && activeMap && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [chosenMolecule.molNo, `//${chosenAtom.chain_id}/${chosenAtom.res_no}`, activeMap.molNo, 100, 1.0]
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Jiggle fit",  variant: "info"}))
+        return doShortCut('fit_to_map_by_random_jiggle_using_cid', formatArgs)
+    }
+
+    else if (action === 'rotamers_dialog' && activeMap && !viewOnly) {
+        const formatArgs = (chosenMolecule: moorhen.Molecule, chosenAtom: moorhen.ResidueSpec) => {
+            return [chosenMolecule.molNo, chosenAtom.chain_id, chosenAtom.res_no, chosenAtom.ins_code, chosenAtom.alt_conf, activeMap.molNo]
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Autofit rotamer",  variant: "info"}))
+        return doShortCut('auto_fit_rotamer', formatArgs)
+    }
+
+    else if (action === 'quick_save' && !viewOnly) {
+        if (molecules.length > 0) {
+            molecules[0].downloadAtoms()
+            if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Saved coordinates",  variant: "info"}))
+        }
+        return false
+    }
+
+    else if (action === 'ncs_jump' && molecules.length > 0) {
+        (async () => {
+            const targetMolecule = hoveredAtom.molecule ?? molecules[0];
+            let currentChain: string | null = null;
+            let currentResNo: number | null = null;
+            if (hoveredAtom.molecule && hoveredAtom.cid) {
+                const spec = cidToSpec(hoveredAtom.cid);
+                currentChain = spec.chain_id;
+                currentResNo = spec.res_no;
+            } else {
+                const [centreMol, centreCid] = await getCentreAtom(molecules, commandCentre, store);
+                if (centreMol && centreCid) {
+                    const spec = cidToSpec(centreCid);
+                    currentChain = spec.chain_id;
+                    currentResNo = spec.res_no;
+                }
+            }
+            if (!currentChain || currentResNo === null) {
+                console.log('NCS jump: no current chain/residue');
+                return;
+            }
+            const ncsGroups = await targetMolecule.getNcsRelatedChains();
+            const group = ncsGroups.find(g => g.includes(currentChain));
+            if (!group || group.length < 2) {
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No NCS-related chains found", variant: "info" }));
+                return;
+            }
+            const idx = group.indexOf(currentChain);
+            const nextChain = group[(idx + 1) % group.length];
+            const nextCid = `/*/${nextChain}/${currentResNo}-${currentResNo}/`;
+            if (showShortcutToast) dispatch(enqueueSnackbar({ message: `NCS jump to chain ${nextChain}`, variant: "info" }));
+            await targetMolecule.centreAndAlignViewOn(nextCid, true);
+        })();
+        return false;
+    }
+
+    else if (action === 'go_to_ligand') {
+        if (molecules.length > 0) {
+            commandCentre.current.cootCommand({
+                returnType: "interesting_places_data",
+                command: "get_interesting_places",
+                commandArgs: [molecules[0].molNo, "ligand"],
+            }, false)
+            .then(response => {
+                const places = response.data.result.result
+                if (places && places.length > 0) {
+                    const place = places[0]
+                    dispatch(setOrigin([-place.coordX, -place.coordY, -place.coordZ]))
+                }
+            })
+        }
+        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Go to ligand",  variant: "info"}))
+        return false
+    }
+
     return true
 }

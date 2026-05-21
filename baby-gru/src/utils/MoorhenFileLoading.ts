@@ -100,7 +100,7 @@ export const drawModels = async (newMolecules: moorhen.Molecule[]) => {
     }
 
     for (const newMolecule of newMolecules) {
-        drawPromises.push(newMolecule.fetchIfDirtyAndDraw("CRs"));
+        drawPromises.push(newMolecule.fetchIfDirtyAndDraw("CBs"));
     }
     await Promise.all(drawPromises);
 };

@@ -89,7 +89,7 @@ export const PREFERENCES_MAP: { [key: number]: PreferenceEntry } = {
         label: "defaultBackgroundColor",
         valueSetter: setDefaultBackgroundColor,
         selector: (state: moorhen.State) => state.sceneSettings.defaultBackgroundColor,
-        defaultValue: [1, 1, 1, 1],
+        defaultValue: [0, 0, 0, 1],
     },
     2: {
         label: "atomLabelDepthMode",
@@ -191,7 +191,7 @@ export const PREFERENCES_MAP: { [key: number]: PreferenceEntry } = {
         label: "shortcutOnHoveredAtom",
         valueSetter: setShortcutOnHoveredAtom,
         selector: (state: moorhen.State) => state.shortcutSettings.shortcutOnHoveredAtom,
-        defaultValue: false,
+        defaultValue: true,
     },
     19: {
         label: "resetClippingFogging",
