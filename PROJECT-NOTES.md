@@ -39,6 +39,7 @@ This project customizes Moorhen with Coot 0.9.x-style keyboard shortcuts and UX 
 ```
 baby-gru/src/components/managers/preferences/DefaultShortcuts.ts
 baby-gru/src/components/managers/preferences/PreferencesList.ts
+baby-gru/src/components/menu-item/ImportLigandDictionary.tsx
 baby-gru/src/moorhen.ts
 baby-gru/src/utils/MoorhenFileLoading.ts
 baby-gru/src/utils/MoorhenKeyboardPress.ts
@@ -58,11 +59,12 @@ README-MH.md (new)
 | `t` | Add terminal residue | |
 | `j` | Jiggle fit | 100 trials, 1.0Å range |
 | `k` | Delete sidechain | Keeps backbone (N, CA, C, O, CB, H, HA) |
-| `x` | Go to next ligand | |
+| `l` | Go to next ligand (cycles) | Cycles through all ligands across all loaded molecules |
 | `z` | Autofit rotamer (alt) | Duplicate of `a` |
 | `o` | NCS jump | Cycles through NCS-related chains at same residue number |
 | `Shift+F` | Fill partial residue | |
 | `Shift+H` | Refine active residue (single) | |
+| `Shift+L` | Label atom on click | Was unmodified `l` |
 | `Shift+S` | Quick-save coordinates | |
 
 ### Conflict resolution (Moorhen defaults relocated)
@@ -72,7 +74,17 @@ README-MH.md (new)
 | `a` | Measure arbitrary distances | Moved to `d` |
 | `r` | Restore scene | Moved to `v` |
 | `g` | Go to blob | Moved to `b` |
+| `l` | Label atom on click | Moved to `Shift+L` |
 | `z` | Wiggle camera | Unbound |
+
+### Other UX behavior changes
+
+- **Drop a `.cif` dictionary** while molecules are loaded → attaches it to existing molecules (refreshes their ligand bonds) instead of creating a new monomer molecule
+- **Import Ligand Dictionary** dialog:
+  - "Create instance on read" toggle defaults to off (just adds the dictionary)
+  - "Make monomer available to" defaults to the first loaded molecule (not "Any molecule")
+  - The toggle is now functional — previously the create-instance ref was hard-coded to true regardless of the checkbox
+- **Loading a dictionary** now marks atoms dirty so the next redraw re-fetches bonds with the new connectivity (previously bonds didn't refresh until other actions caused a re-fetch)
 
 ### Default preferences
 

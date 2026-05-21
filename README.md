@@ -6,7 +6,11 @@
 > - **Full project setup & build instructions**: [PROJECT-NOTES.md](PROJECT-NOTES.md)
 > - **Desktop wrapper (Electron)**: [3viil/MoorhenWrapper](https://github.com/3viil/MoorhenWrapper)
 >
-> **Customizations**: Coot-style keyboard shortcuts (`r`, `a`, `e`, `t`, `j`, `k`, `w`, `x`, `o` for NCS jump, etc.), black background default, bonds (not ribbons) default, hovered-atom shortcut mode.
+> **Customizations**:
+> - Coot-style keyboard shortcuts: `a` autofit rotamer, `r` triple refine, `e` flip peptide, `t` add terminal residue, `j` jiggle fit, `k` delete sidechain, `w` add waters, `l` cycle ligands, `o` NCS jump, `Shift+H` single refine, `Shift+R` sphere refine, `Shift+F` fill partial, `Shift+S` quick-save
+> - Black background default, bonds (not ribbons) default, hydrogens hidden, hovered-atom shortcut mode
+> - Drop a `.cif` dictionary onto loaded molecules → attaches the dictionary instead of creating a new molecule
+> - Bug fixes: ligand dictionary loading actually refreshes bonds, Import Dictionary toggle now works
 
 ---
 
