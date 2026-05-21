@@ -137,6 +137,7 @@ const ImportLigandDictionary = (props: {
                     allowAny={true}
                     ref={moleculeSelectRef}
                     label="Make monomer available to"
+                    selected={molecules.length > 0 ? (molecules[0].molNo as number) : undefined}
                     onChange={evt => {
                         // eslint-disable-next-line react-hooks/react-compiler
                         moleculeSelectValueRef.current = evt.target.value;
@@ -371,12 +372,19 @@ export const ImportDictionary = () => {
     const addToMoleculeValueRef = useRef<null | number>(null);
     const tlcSelectRef = useRef<null | HTMLSelectElement>(null);
     const createRef = useRef<boolean>(false);
+    const molecules = useSelector((state: RootState) => state.molecules.moleculeList);
 
     const [tlc, setTlc] = useState<string>("");
     const [addToMolecule, setAddToMolecule] = useState<string>("");
     const [createInstance, setCreateInstance] = useState<boolean>(false);
     // Keep createRef in sync with the toggle state
     useEffect(() => { createRef.current = createInstance; }, [createInstance]);
+    // Default the molecule-select ref to the first molecule (matches the default selected option)
+    useEffect(() => {
+        if (molecules.length > 0 && (moleculeSelectValueRef.current === null || moleculeSelectValueRef.current === undefined)) {
+            moleculeSelectValueRef.current = String(molecules[0].molNo);
+        }
+    }, [molecules]);
     const [validDictFile, setValidDictFile] = useState<boolean>(true);
     const [tlcsOfFile, setTlcsOfFile] = useState<{ comp_id: string; dict_contents: string }[]>([]);
     const dispatch = useDispatch();

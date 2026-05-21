@@ -7,6 +7,7 @@ import { setValidationJson } from "../store/jsonValidation";
 import { addMap, addMapList } from "../store/mapsSlice";
 import { showModal } from "../store/modalsSlice";
 import { addMoleculeList } from "../store/moleculesSlice";
+import { triggerUpdate } from "../store/moleculeMapUpdateSlice";
 import { setAfJson, setEsmJson, setHomologsJson, setMrParseModels, setTargetSequence } from "../store/mrParseSlice";
 import { moorhen } from "../types/moorhen";
 import { MoorhenTimeCapsule } from "../utils/MoorhenTimeCapsule";
@@ -503,10 +504,30 @@ export const autoOpenFiles = async (
     const mapsCreated: MoorhenMap[] = [];
     const returnValues: { type: "molecule" | "map"; uniqueID: string; molNo: number; fileName: string }[] = [];
 
+    const existingMolecules = store.getState().molecules.moleculeList;
+
     for (const file of files) {
         //Structures
         if (file.name.endsWith(".pdb") || file.name.endsWith(".ent") || file.name.endsWith(".cif") || file.name.endsWith(".mmcif")) {
             const content = await file.text();
+
+            // If the file is a CIF dictionary (has data_comp_*) AND we have molecules loaded,
+            // attach it to those molecules rather than creating a new monomer molecule
+            const isDictionary = /data_comp_\S/i.test(content) && !/_atom_site\.\s/.test(content);
+            if (isDictionary && existingMolecules.length > 0) {
+                console.log(`File ${file.name} looks like a CIF dictionary; attaching to ${existingMolecules.length} existing molecule(s)`);
+                for (const molecule of existingMolecules) {
+                    await molecule.addDict(content);
+                    await molecule.redraw();
+                    dispatch(triggerUpdate(molecule.molNo));
+                }
+                dispatch(enqueueSnackbar({
+                    message: `Loaded dictionary from ${file.name} into ${existingMolecules.length} molecule(s)`,
+                    variant: "info",
+                }));
+                continue;
+            }
+
             const newMolecule = await readCoordsString(
                 content,
                 file.name,
