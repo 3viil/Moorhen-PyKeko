@@ -1,4 +1,17 @@
-# Moorhen
+# MoorHenMH
+
+> **This is a personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with Coot 0.9.x-style keyboard shortcuts and UX defaults.
+>
+> - **Fork-specific notes**: [README-MH.md](README-MH.md)
+> - **Full project setup & build instructions**: [PROJECT-NOTES.md](PROJECT-NOTES.md)
+> - **Desktop wrapper (Electron)**: [3viil/MoorhenWrapper](https://github.com/3viil/MoorhenWrapper)
+>
+> **Customizations**: Coot-style keyboard shortcuts (`r`, `a`, `e`, `t`, `j`, `k`, `w`, `x`, `o` for NCS jump, etc.), black background default, bonds (not ribbons) default, hovered-atom shortcut mode.
+
+---
+
+# Moorhen (upstream README below)
+
 [![NPM Version](https://badge.fury.io/js/moorhen.svg?style=flat)](https://npmjs.org/package/moorhen)
 [![Inline docs](https://github.com/moorhen-coot/moorhen/actions/workflows/run-tests.yml/badge.svg)](https://github.com/moorhen-coot/Moorhen/actions/workflows/run-tests.yml)
 [![Inline docs](https://github.com/moorhen-coot/MoorhenOrgBuild/actions/workflows/build-and-deploy.yml/badge.svg)](https://moorhen.org)
