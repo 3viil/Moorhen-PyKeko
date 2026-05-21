@@ -1,6 +1,6 @@
 import { TextField } from "@mui/material";
 import { useDispatch, useSelector, useStore } from "react-redux";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { RootState, enqueueSnackbar } from "@/store/";
 import { parseCifDict } from "@/utils/MoorhenFileLoading";
 import { useCommandCentre, usePaths } from "../../InstanceManager";
@@ -202,6 +202,7 @@ export const SMILESToLigand = () => {
     const [source, setSource] = useState<string>("smiles");
 
     const createRef = useRef<boolean>(true);
+    useEffect(() => { createRef.current = createInstance; }, [createInstance]);
     const moleculeSelectRef = useRef<null | HTMLSelectElement>(null);
     const moleculeSelectValueRef = useRef<null | string>(null);
     const addToRef = useRef<null | HTMLSelectElement>(null);
@@ -369,11 +370,13 @@ export const ImportDictionary = () => {
     const addToRef = useRef<null | HTMLSelectElement>(null);
     const addToMoleculeValueRef = useRef<null | number>(null);
     const tlcSelectRef = useRef<null | HTMLSelectElement>(null);
-    const createRef = useRef<boolean>(true);
+    const createRef = useRef<boolean>(false);
 
     const [tlc, setTlc] = useState<string>("");
     const [addToMolecule, setAddToMolecule] = useState<string>("");
-    const [createInstance, setCreateInstance] = useState<boolean>(true);
+    const [createInstance, setCreateInstance] = useState<boolean>(false);
+    // Keep createRef in sync with the toggle state
+    useEffect(() => { createRef.current = createInstance; }, [createInstance]);
     const [validDictFile, setValidDictFile] = useState<boolean>(true);
     const [tlcsOfFile, setTlcsOfFile] = useState<{ comp_id: string; dict_contents: string }[]>([]);
     const dispatch = useDispatch();
