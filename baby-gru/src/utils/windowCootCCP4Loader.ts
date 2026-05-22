@@ -21,7 +21,10 @@ export const windowCootCCP4Loader = (src: string) => {
         return;
     }
 
-    const memory64 = WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1]));
+    let memory64 = WebAssembly.validate(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0, 5, 3, 1, 4, 1]));
+    // The Electron wrapper sets MOORHEN_FORCE_32BIT (preload) to avoid the intermittent
+    // 64-bit init hang; the browser build leaves this unset and keeps 64-bit.
+    if (typeof window !== "undefined" && (window as any).MOORHEN_FORCE_32BIT) memory64 = false;
     const isChromeLinux = navigator.appVersion.indexOf("Linux") != -1 && navigator.appVersion.indexOf("Chrome") != -1;
 
     const onModuleLoaded = (returnedModule: any) => {

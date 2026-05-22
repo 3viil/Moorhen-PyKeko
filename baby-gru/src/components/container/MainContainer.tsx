@@ -5,6 +5,7 @@ import { SnackBars } from "@/components/snack-bars";
 import { enqueueSnackbar } from "@/store";
 import { MoorhenInstance, useCommandAndCapsule, useMoorhenInstance } from "../../InstanceManager";
 import { CommandCentre } from "../../InstanceManager/CommandCentre";
+import { MoorhenControlBridge } from "../../api/MoorhenControlBridge";
 import { isDarkBackground } from "../../WebGLgComponents/webGLUtils";
 import { useWindowEventListener } from "../../hooks/useWindowEventListener";
 import { RootState } from "../../store/MoorhenReduxStore";
@@ -396,6 +397,7 @@ export const MoorhenContainer = (props: ContainerProps) => {
                     <UpdatingMapsManager />
                     <MoorhenMapsHeadManager />
                     <MoleculesOriginListener />
+                    <MoorhenControlBridge />
                     <LongJobSnackNotification />
                     <MoorhenDroppable monomerLibraryPath={monomerLibraryPath} timeCapsuleRef={timeCapsuleRef} commandCentre={commandCentre}>
                         <MoorhenWebMG

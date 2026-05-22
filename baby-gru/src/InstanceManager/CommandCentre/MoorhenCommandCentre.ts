@@ -100,7 +100,8 @@ export class CommandCentre {
 
     async init() {
         this.isClosed = false;
-        this.cootWorker = new Worker(`${this.urlPrefix}/wasm/CootWorker.js`);
+        const force32 = (typeof window !== "undefined" && (window as any).MOORHEN_FORCE_32BIT) ? "?force32=1" : "";
+        this.cootWorker = new Worker(`${this.urlPrefix}/wasm/CootWorker.js${force32}`);
         this.cootWorker.onmessage = this.handleMessage.bind(this);
         const fileResponse = await fetch(`${this.urlPrefix}/data.tar.gz`);
         const fileData = await fileResponse.arrayBuffer();
