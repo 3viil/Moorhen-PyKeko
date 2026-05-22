@@ -33,7 +33,12 @@ Merged outlier list across three categories — Ramachandran (p<0.02), rotamer (
 
 ### `d` — Drag atoms (interactive refinement) (new)
 
-Equivalent to right-click → "Drag atoms" on the residue under the cursor: enters live-refinement-with-pull mode at the active refinement selection size (SINGLE / TRIPLE / QUINTUPLE / HEPTUPLE / SPHERE, whichever is set). Accept/Reject snackbar appears for confirmation.
+Equivalent to right-click → "Drag atoms" on the residue under the cursor: enters live-refinement-with-pull mode at the active refinement selection size. Accept/Reject snackbar appears for confirmation.
+
+The selection size is read from `state.refinementSettings.refinementSelection` at press time. Three ways to change it:
+- **UI**: top-bar **Preferences → Refinement settings... → Default refinement selection** dropdown (Single residue / Adjacent residues / Sphere).
+- **Implicit**: residue-selection mode auto-toggles between SPHERE and TRIPLE.
+- **Scripted** (in Interactive Scripting, JS mode): `dispatch(setRefinementSelection("HEPTUPLE"))`. QUINTUPLE/HEPTUPLE exist in the C++ backend but aren't exposed in the dropdown — script is the only way to set them.
 
 ### `o` / `Shift+O` — NCS jump
 

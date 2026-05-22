@@ -441,6 +441,22 @@ Equivalent to right-click → "Drag atoms" in the context menu. Mirrors `Moorhen
 
 The Accept/Reject snackbar handles the rest. `dist_ang_2d` was on `d` upstream; that shortcut is now empty-keyed in `DEFAULT_SHORTCUTS` (still in the keymap, just unbound).
 
+**Where the selection size comes from**: the value lives in
+`refinementSettings.refinementSelection` (Redux). Three ways to set it:
+
+1. **UI** — top-bar **Preferences → Refinement settings... → Default refinement
+   selection** opens a popover with a dropdown (Single residue / Adjacent
+   residues / Sphere). Defined at `baby-gru/src/components/menu-system/subMenuConfig.tsx:780`,
+   rendered by `RefinementSettings.tsx` which dispatches
+   `setRefinementSelection(...)` on change.
+2. **Implicit** — `MainContainer.tsx` auto-toggles between SPHERE and TRIPLE
+   inside the residue-selection flow (shift-click range).
+3. **Scripted** — `dispatch(setRefinementSelection("HEPTUPLE"))` from
+   Interactive Scripting in JS mode. The action creator is exported through
+   `MoorhenScriptApi`'s env. **QUINTUPLE / HEPTUPLE are valid in the C++
+   backend but the UI dropdown does not list them** — they are scriptable
+   only.
+
 ### Space-jump robustness
 
 `jump_next_residue` / `jump_previous_residue` used to bail when `state.molecules.visibleMolecules` was empty (`getCentreAtom` filters by `isVisible()`). The MCP `load_coordinates` flow doesn't dispatch `showMolecule`, so models loaded via Claude never landed in that list and space did nothing. Handler now falls back to `hoveredAtom.molecule ?? molecules[0]` and calls `get_active_atom` directly when `getCentreAtom` returns null.
