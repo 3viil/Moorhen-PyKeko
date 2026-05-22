@@ -258,6 +258,34 @@ export const moorhenKeyPress = (
         dispatch(setShownControl({ name: "goToResidue"}))
     }
 
+    else if (action === 'toggle_ncs_ghosts') {
+        (async () => {
+            let chosenMolecule: moorhen.Molecule | undefined
+            let chain: string | undefined
+            if (hoveredAtom.molecule) {
+                chosenMolecule = hoveredAtom.molecule
+                chain = cidToSpec(hoveredAtom.cid).chain_id
+            } else {
+                const [mol, cid] = await getCentreAtom(molecules, commandCentre, store)
+                if (mol && cid) {
+                    chosenMolecule = mol
+                    chain = cidToSpec(cid).chain_id
+                }
+            }
+            if (!chosenMolecule || !chain) return
+            if (chosenMolecule.ncsGhostReps?.length > 0) {
+                chosenMolecule.clearNcsGhosts()
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "NCS ghosts cleared", variant: "info" }))
+            } else {
+                const n = await chosenMolecule.drawNcsGhosts(chain)
+                if (showShortcutToast) dispatch(enqueueSnackbar({
+                    message: n > 0 ? `NCS ghosts on chain ${chain}: ${n} copies` : `No NCS copies for chain ${chain}`,
+                    variant: "info"
+                }))
+            }
+        })()
+    }
+
     else if (action === 'go_to_blob' && activeMap && !viewOnly) {
         if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Go to blob",  variant: "info"}))
         const frontAndBack: [number[], number[], number, number] = getFrontAndBackPos()

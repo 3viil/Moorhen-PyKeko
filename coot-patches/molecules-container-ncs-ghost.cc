@@ -4,27 +4,25 @@
 // Crucially, atoms are NOT moved - the matrix is just returned for use as a
 // rendering transform overlay.
 
+#include <sstream>
 #include "molecules-container.hh"
 
-std::vector<float>
+std::string
 molecules_container_t::get_ncs_ghost_matrix(int imol,
                                             const std::string &master_chain,
                                             const std::string &copy_chain) {
-
-   // Return 16 floats. Empty vector indicates failure.
-   std::vector<float> result;
 
 #ifdef HAVE_SSMLIB
 
    if (!is_valid_model_molecule(imol)) {
       std::cout << "get_ncs_ghost_matrix: invalid molecule " << imol << std::endl;
-      return result;
+      return "";
    }
 
    atom_selection_container_t asc = molecules[imol].atom_sel;
    if (asc.n_selected_atoms == 0) {
       std::cout << "get_ncs_ghost_matrix: no atoms in molecule " << imol << std::endl;
-      return result;
+      return "";
    }
 
    // Make atom selections for the master and copy chains within the same molecule
@@ -49,28 +47,30 @@ molecules_container_t::get_ncs_ghost_matrix(int imol,
                 << " copy=" << n_copy << std::endl;
       asc.mol->DeleteSelection(sel_master);
       asc.mol->DeleteSelection(sel_copy);
-      return result;
+      return "";
    }
 
    ssm::SetConnectivityCheck(ssm::CONNECT_Flexible);
    ssm::SetMatchPrecision(ssm::PREC_Normal);
    ssm::Align *SSMAlign = new ssm::Align();
-   // AlignSelectedMatch(mol_mov, mol_ref, ..., sel_mov, sel_ref)
-   // We want the matrix that maps copy -> master, so copy is the "moving" selection
    int rc = SSMAlign->AlignSelectedMatch(asc.mol, asc.mol,
                                           ssm::PREC_Normal,
                                           ssm::CONNECT_Flexible,
                                           sel_copy, sel_master);
 
+   std::string result;
    if (rc) {
       std::cout << "get_ncs_ghost_matrix: SSM alignment failed rc=" << rc << std::endl;
    } else {
-      // Pack TMatrix (mmdb::mat44 = realtype[4][4]) into 16 floats, row-major
+      // Pack TMatrix (mmdb::mat44 = realtype[4][4]) into 16 space-separated floats, row-major
+      std::ostringstream oss;
       for (int i = 0; i < 4; ++i) {
          for (int j = 0; j < 4; ++j) {
-            result.push_back(static_cast<float>(SSMAlign->TMatrix[i][j]));
+            if (i || j) oss << " ";
+            oss << static_cast<float>(SSMAlign->TMatrix[i][j]);
          }
       }
+      result = oss.str();
       std::cout << "get_ncs_ghost_matrix: RMSD=" << SSMAlign->rmsd
                 << " aligned=" << SSMAlign->nalgn
                 << " (" << master_chain << " <- " << copy_chain << ")" << std::endl;
@@ -79,10 +79,10 @@ molecules_container_t::get_ncs_ghost_matrix(int imol,
    delete SSMAlign;
    asc.mol->DeleteSelection(sel_master);
    asc.mol->DeleteSelection(sel_copy);
+   return result;
 
 #else
    std::cout << "get_ncs_ghost_matrix: SSMLIB not available" << std::endl;
+   return "";
 #endif
-
-   return result;
 }

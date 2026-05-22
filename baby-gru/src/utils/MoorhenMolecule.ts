@@ -7,6 +7,7 @@ import "pako";
 import { quatToMat4 } from "../WebGLgComponents/quatToMat4.js";
 import { isDarkBackground } from "../WebGLgComponents/webGLUtils";
 import { setOrigin, setQuat, setRequestDrawScene, setZoom } from "../store/glRefSlice";
+import { buildBuffers } from "../WebGLgComponents/buildBuffers";
 import { hideMolecule } from "../store/moleculesSlice";
 import { gemmi } from "../types/gemmi";
 import { libcootApi } from "../types/libcoot";
@@ -2629,17 +2630,86 @@ export class MoorhenMolecule {
     async getNcsGhostMatrix(masterChain: string, copyChain: string): Promise<number[] | null> {
         const result = (await this.commandCentre.current.cootCommand(
             {
-                returnType: "float_array",
+                returnType: "status",
                 command: "get_ncs_ghost_matrix",
                 commandArgs: [this.molNo, masterChain, copyChain],
             },
             false
-        )) as moorhen.WorkerResponse<number[]>;
-        const arr = result.data.result.result;
-        if (!arr || arr.length !== 16) {
-            return null;
-        }
+        )) as moorhen.WorkerResponse<string>;
+        const str = result.data.result.result;
+        if (!str || typeof str !== "string") return null;
+        const arr = str.trim().split(/\s+/).map(Number);
+        if (arr.length !== 16 || arr.some(isNaN)) return null;
         return arr;
+    }
+
+    ncsGhostReps: MoleculeRepresentation[] = [];
+
+    /**
+     * Draw translucent NCS ghost overlays of `masterChain` at the position of each
+     * NCS-related copy chain. SSM-derived matrices are computed in C++; meshes are
+     * generated for the master chain and rendered N additional times with each
+     * inverse matrix as a per-buffer transform.
+     */
+    async drawNcsGhosts(masterChain: string, opacity = 0.4): Promise<number> {
+        this.clearNcsGhosts();
+        const groups = await this.getNcsRelatedChains();
+        const group = groups.find(g => g.includes(masterChain));
+        if (!group) return 0;
+        const copyChains = group.filter(c => c !== masterChain);
+
+        // Cycle through visually distinct ghost colors
+        const palette: [number, number, number][] = [
+            [1.0, 0.55, 0.0],   // orange
+            [0.2, 0.8, 0.5],    // green
+            [0.4, 0.6, 1.0],    // blue
+            [1.0, 0.4, 0.7],    // pink
+            [0.8, 0.8, 0.2],    // yellow
+            [0.5, 0.3, 0.8],    // purple
+        ];
+
+        for (let cIdx = 0; cIdx < copyChains.length; cIdx++) {
+            const copy = copyChains[cIdx];
+            const ghostColor = palette[cIdx % palette.length];
+            const row = await this.getNcsGhostMatrix(masterChain, copy);
+            if (!row) continue;
+            // SSM TMatrix is row-major and maps copy→master. We draw the copy's
+            // mesh transformed onto the master to visualize NCS agreement.
+            // The renderer's symmetryMatrices path expects column-major.
+            const colMajor: number[] = new Array(16);
+            for (let i = 0; i < 4; i++)
+                for (let j = 0; j < 4; j++)
+                    colMajor[j * 4 + i] = row[i * 4 + j];
+
+            const rep = new MoleculeRepresentation("CBs", `//${copy}/*`, this.commandCentre);
+            rep.setParentMolecule(this);
+            await rep.draw();
+            rep.buffers?.forEach(buf => {
+                buf.symmetryMatrices = [colMajor];
+                buf.changeColourWithSymmetry = false;
+                buf.transparent = true;
+                buf.triangleColours?.forEach((cb: number[]) => {
+                    for (let i = 0; i < cb.length; i += 4) {
+                        cb[i] = ghostColor[0];
+                        cb[i + 1] = ghostColor[1];
+                        cb[i + 2] = ghostColor[2];
+                        cb[i + 3] = opacity;
+                    }
+                });
+                buf.isDirty = true;
+                buf.alphaChanged = true;
+            });
+            buildBuffers(rep.buffers, this.store);
+            this.ncsGhostReps.push(rep);
+        }
+        this.store.dispatch(setRequestDrawScene(true));
+        return this.ncsGhostReps.length;
+    }
+
+    clearNcsGhosts() {
+        this.ncsGhostReps.forEach(rep => rep.deleteBuffers());
+        this.ncsGhostReps = [];
+        this.store.dispatch(setRequestDrawScene(true));
     }
 
     /**

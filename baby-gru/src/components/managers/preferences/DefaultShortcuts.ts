@@ -36,6 +36,12 @@ export const DEFAULT_SHORTCUTS: { [key: string]: Shortcut } = {
         label: "Go to residue",
         viewOnly: false,
     },
+    toggle_ncs_ghosts: {
+        modifiers: [],
+        keyPress: "g",
+        label: "Toggle NCS ghosts on hovered chain",
+        viewOnly: true,
+    },
     sphere_refine: {
         modifiers: ["shiftKey"],
         keyPress: "r",

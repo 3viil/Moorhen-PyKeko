@@ -110,6 +110,11 @@ export const MoorhenContainer = (props: ContainerProps) => {
 
     const molecules = useSelector((state: moorhen.State) => state.molecules.moleculeList);
     const maps = useSelector((state: moorhen.State) => state.maps);
+    // Debug: expose molecules on window for DevTools console testing
+    useEffect(() => {
+        (window as any).__moorhen_molecules__ = molecules;
+        (window as any).__moorhen_maps__ = maps;
+    }, [molecules, maps]);
     // const hoveredAtom = useSelector((state: moorhen.State) => state.hoveringStates.hoveredAtom);
     const cursorStyle = useSelector((state: moorhen.State) => state.hoveringStates.cursorStyle);
 

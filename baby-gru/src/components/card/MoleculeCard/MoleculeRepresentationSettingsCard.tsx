@@ -5,6 +5,7 @@ import { MoleculeRepresentation, MoorhenMolecule } from "@/utils";
 import { setRequestDrawScene } from "../../../store/glRefSlice";
 import { moorhen } from "../../../types/moorhen";
 import { MoorhenSelect, MoorhenSlider, MoorhenToggle } from "../../inputs";
+import { MoorhenChainSelect } from "../../inputs/Selector/MoorhenChainSelect";
 import { MoorhenStack } from "../../interface-base";
 
 type MoleculeSettingPanelProps =
@@ -367,6 +368,70 @@ export const SymmetrySettingsPanel = (props: {
                 maxVal={100}
                 logScale={false}
                 decimalPlaces={0}
+            />
+        </MoorhenStack>
+    );
+};
+
+export const NcsGhostsSettingsPanel = (props: { molecule: moorhen.Molecule }) => {
+    const [enabled, setEnabled] = useState<boolean>(props.molecule.ncsGhostReps?.length > 0);
+    const [masterChain, setMasterChain] = useState<string>("");
+    const [opacity, setOpacity] = useState<number>(0.4);
+    const [busy, setBusy] = useState<boolean>(false);
+    const dispatch = useDispatch();
+
+    const polymerChains = props.molecule.sequences
+        .filter(s => [1, 2, 3, 4, 5].includes(s.type))
+        .map(s => s.chain);
+
+    useEffect(() => {
+        if (!masterChain && polymerChains.length > 0) setMasterChain(polymerChains[0]);
+    }, []);
+
+    const redraw = async () => {
+        if (busy) return;
+        setBusy(true);
+        try {
+            if (enabled && masterChain) {
+                await props.molecule.drawNcsGhosts(masterChain, opacity);
+            } else {
+                props.molecule.clearNcsGhosts();
+            }
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    useEffect(() => { redraw(); }, [enabled, masterChain, opacity]);
+
+    return (
+        <MoorhenStack gap={"0.5rem"} addMargin>
+            <MoorhenToggle
+                type="switch"
+                checked={enabled}
+                onChange={() => setEnabled(!enabled)}
+                label="Show NCS ghosts"
+            />
+            <MoorhenChainSelect
+                width="100%"
+                margin={"0px"}
+                label="Master chain"
+                disabled={!enabled || busy}
+                molecules={[props.molecule]}
+                selectedCoordMolNo={props.molecule.molNo}
+                onChange={(e) => setMasterChain((e.target as HTMLSelectElement).value)}
+            />
+            <MoorhenSlider
+                isDisabled={!enabled}
+                sliderTitle="Ghost opacity"
+                externalValue={opacity}
+                setExternalValue={setOpacity}
+                showMinMaxVal={false}
+                stepButtons={0.05}
+                minVal={0.05}
+                maxVal={1.0}
+                logScale={false}
+                decimalPlaces={2}
             />
         </MoorhenStack>
     );

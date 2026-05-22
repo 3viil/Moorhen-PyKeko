@@ -63,7 +63,7 @@ export default defineConfig({
                 maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
             },
             devOptions: {
-                enabled: true,
+                enabled: false,
                 type: "module",
             },
             manifest: {

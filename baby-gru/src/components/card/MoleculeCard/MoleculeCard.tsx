@@ -23,6 +23,7 @@ import { AddCustomRepresentationCard } from "./AddCustomRepresentationCard";
 import { MoorhenModifyColourRulesCard } from "./ModifyColourRulesCard";
 import {
     MoorhenMoleculeRepresentationSettingsCard,
+    NcsGhostsSettingsPanel,
     ResidueEnvironmentSettingsPanel,
     SymmetrySettingsPanel,
 } from "./MoleculeRepresentationSettingsCard";
@@ -601,6 +602,9 @@ export const MoleculeCard = (props: MoleculeCardProps) => {
                             }
                         />
                     </MoorhenStack>
+                </MoorhenAccordion>
+                <MoorhenAccordion title="NCS Ghosts">
+                    <NcsGhostsSettingsPanel molecule={props.molecule} />
                 </MoorhenAccordion>
                 {/* <div className="moorhen__molecule_card_representation-buttons"></div> */}
                 {/* </div> */}
