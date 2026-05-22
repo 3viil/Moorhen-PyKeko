@@ -24,9 +24,9 @@ Two apps installed in `/Applications`:
 
 ## Background
 
-Coot (the standard X-ray crystallography model-building tool) version 0.9.x is preferred by crystallographers but doesn't run on macOS Tahoe (XQuartz/GLX is broken). Coot 1.x is unloved due to UX changes.
+Coot version 0.9.x, the ubiquitous model-building tool for X-ray crystallography, is preferred by crystallographers, but doesn't run on macOS Tahoe (which breaks XQuartz). Although Coot 1.x does run on MacOS, a number of UX changes make it less favored.
 
-**Moorhen** is the same Coot C++ engine compiled to WebAssembly with a modern React/WebGL frontend, developed by the same CCP4/MRC-LMB team. It runs natively in browsers and as an Electron app on Tahoe — no X11 needed.
+**Moorhen** is the same Coot C++ engine compiled to WebAssembly with a modern React/WebGL frontend, developed by the same CCP4/MRC-LMB team. It runs natively in browsers and as an Electron app on Tahoe — no XQuartz needed.
 
 This project customizes Moorhen with Coot 0.9.x-style keyboard shortcuts and UX defaults, then wraps the dev server in a desktop app for one-click launching.
 
@@ -52,7 +52,7 @@ README-MH.md (new)
 
 | Key | Action | Notes |
 |-----|--------|-------|
-| `w` | Add waters | Batch auto-place by map density (not single-at-cursor like Coot) |
+| `w` | Add waters | Batch auto-place by map density (not single-at-cursor like Coot, needs to be fixed) |
 | `a` | Autofit rotamer | |
 | `r` | Triple refine | Refine 3 residues (centered residue + 2 neighbors) |
 | `e` | Flip peptide | |
