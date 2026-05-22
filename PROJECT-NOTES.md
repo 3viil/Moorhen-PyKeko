@@ -327,13 +327,11 @@ For ongoing customizations:
 
 ### Functional
 
-1. **No NCS ghosts yet** — the initial implementation was wrong (it just showed symmetry mates); proper implementation needs C++ WASM bindings for SSM superposition. See "Future work" below.
+1. **`w` (add water)** isn't single-water-at-cursor like Coot — Moorhen's `add_waters` is a batch operation that fills all positive density peaks.
 
-2. **`w` (add water)** isn't single-water-at-cursor like Coot — Moorhen's `add_waters` is a batch operation that fills all positive density peaks.
+2. **64-bit WASM hangs in Electron wrapper** — wrapper forces 32-bit mode (via `MOORHEN_FORCE_32BIT` window flag + `?force32=1` worker URL query). Browser (Chrome) uses 64-bit fine.
 
-3. **64-bit WASM hangs in Electron wrapper** — wrapper forces 32-bit mode. Browser (Chrome) uses 64-bit fine.
-
-4. **Window-narrow CSS** — Moorhen's left menu collapses if window is too narrow; resize wider if you can't see it.
+3. **Window-narrow CSS** — Moorhen's left menu collapses if window is too narrow; resize wider if you can't see it.
 
 ### Workflow
 
@@ -345,24 +343,25 @@ For ongoing customizations:
 
 ---
 
+## Implemented features (beyond upstream)
+
+### NCS Ghosts
+
+Show ghost copies of NCS-related chains *transformed onto* a chosen master chain — to verify how well NCS copies agree. Implemented as:
+
+1. **C++**: `molecules_container_t::get_ncs_ghost_matrix(imol, master, copy)` in `coot-patches/molecules-container-ncs-ghost.cc` (added to `checkout/coot-1.0` and linked into libcoot). Uses SSM `AlignSelectedMatch` with `sel_copy` as moving, `sel_master` as reference, returns the resulting 4×4 `TMatrix` as a space-separated string (row-major).
+2. **Embind**: `.function("get_ncs_ghost_matrix", &molecules_container_t::get_ncs_ghost_matrix)` in `moorhen-wrappers.cc` (inside the `molecules_container_js` class block).
+3. **JS**: `MoorhenMolecule.getNcsGhostMatrix()` parses the string, `drawNcsGhosts(masterChain, opacity)` and `clearNcsGhosts()` manage the overlay lifecycle.
+4. **Render**: each ghost is a fresh `CBs` `MoleculeRepresentation` for the copy chain, with `buf.symmetryMatrices = [matrix]` and `buf.changeColourWithSymmetry = false` so the existing instanced bond renderer draws it transformed without shader changes. Translucent + color-cycled per copy.
+5. **UI**: `NcsGhostsSettingsPanel` accordion in the molecule card (chain picker + opacity slider). Keyboard shortcut `g` toggles ghosts on the hovered chain.
+
+The above relies on `get_ncs_related_chains()` (already in WASM) to discover NCS groups.
+
+### MCP control surface
+
+`MoorhenControlApi.ts` and `MoorhenControlBridge.tsx` (in `baby-gru/src/api/`) expose `window.MoorhenControlApi` and bridge it to the Electron wrapper's IPC channel. The wrapper runs a token-authenticated HTTP server on `127.0.0.1:<random>`, writing `{port, token, vitePort}` to `~/.moorhen-mcp/control-<vitePort>.json`. The separate [MoorhenMCP](https://github.com/3viil/MoorhenMCP) repo provides the stdio MCP server that POSTs `{token, verb, args}` to that endpoint so Claude can drive a running MoorhenLocal/MoorhenDev.
+
 ## Future Work
-
-### NCS Ghosts (planned)
-
-What it should do: when viewing chain A, show ghost copies of chains B, C, D *transformed to overlay* chain A. This visualizes how well NCS copies match.
-
-**Algorithm** (from Coot source `src/molecule-class-info-ncs.cc`):
-1. Get NCS-related chains (`get_ncs_related_chains()` already in WASM)
-2. For each copy chain, compute the **SSM superposition matrix** that maps it onto the master chain — **without moving atoms**
-3. Generate a bond mesh for the copy chain's atoms
-4. Apply the matrix to render as translucent overlay
-
-**Required**:
-- New C++ function in `molecules_container_t` that returns the SSM matrix (Coot has `find_ncs_matrix()` already — needs wrapping in `moorhen-wrappers.cc` and exposing via Emscripten)
-- Per-chain rendering path in the WebGL pipeline (parallel to symmetry rendering)
-- UI toggle in the molecule card
-
-**Estimated effort**: 3-5 days for Phase 1 (works for whole molecules), 2-3 days more for proper per-chain with master selector.
 
 ### Other potential improvements
 
