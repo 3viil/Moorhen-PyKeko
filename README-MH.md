@@ -10,7 +10,7 @@ A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhe
 
 ## Headline additions vs upstream
 
-### NCS Ghosts (new)
+### NCS Ghosts
 
 Visualize non-crystallographic symmetry by overlaying every NCS-related chain *transformed onto* a chosen master chain — translucent, color-cycled, computed in C++ via SSM alignment.
 
@@ -19,19 +19,19 @@ Visualize non-crystallographic symmetry by overlaying every NCS-related chain *t
 - Adds a new C++ binding `get_ncs_ghost_matrix(imol, master, copy)` exposed via Embind
 - Built on instanced bond rendering via the existing `symmetryMatrices` path — no shader changes
 
-### `w` — Single water at crosshairs (new)
+### `w` — Single water at crosshairs
 
 Replaces upstream's batch `add_waters` on this key. Places a single HOH at the current view centre (auto-uses the molecule's solvent chain, creates one if absent), then single-residue refines the new water against the active map. Adds a C++ wrapper `add_water_at_position(imol, x, y, z)` that returns the new water's CID.
 
-### `p` / `Shift+P` — Difference-map peak cycler (new)
+### `p` / `Shift+P` — Difference-map peak cycler
 
 Find the next signed difference-map peak above ±3σ. Sorted by |sigma|; toast announces e.g. `Peak 3/24: -5.2σ`. `Shift+P` walks backward through the same list.
 
-### `n` / `Shift+N` — Validation issue cycler (new)
+### `n` / `Shift+N` — Validation issue cycler
 
 Merged outlier list across three categories — Ramachandran (p<0.02), rotamer (p<0.02), and density-fit (worst residues by libcoot's `density_fit_analysis`). Each entry is tagged so the toast tells you which kind: `Issue 4/17 (rotamer): //A/123 PHE p=0.018`. Sorted by per-category-normalized badness so worst things come first; `Shift+N` reverses.
 
-### `d` — Drag atoms (interactive refinement) (new)
+### `d` — Drag atoms (interactive refinement)
 
 Equivalent to right-click → "Drag atoms" on the residue under the cursor: enters live-refinement-with-pull mode at the active refinement selection size. Accept/Reject snackbar appears for confirmation.
 

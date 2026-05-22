@@ -45,10 +45,10 @@ baby-gru/src/utils/MoorhenFileLoading.ts
 baby-gru/src/utils/MoorhenKeyboardPress.ts
 baby-gru/src/utils/MoorhenMolecule.ts
 baby-gru/src/utils/MoorhenMoleculeRepresentation.ts
-README-MH.md (new)
+README-MH.md
 ```
 
-### New keyboard shortcuts (Coot-style + this fork's additions)
+### Keyboard shortcuts (Coot-style + this fork's additions)
 
 | Key | Action | Notes |
 |-----|--------|-------|
