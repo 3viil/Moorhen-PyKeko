@@ -48,20 +48,24 @@ baby-gru/src/utils/MoorhenMoleculeRepresentation.ts
 README-MH.md (new)
 ```
 
-### New keyboard shortcuts (Coot-style)
+### New keyboard shortcuts (Coot-style + this fork's additions)
 
 | Key | Action | Notes |
 |-----|--------|-------|
-| `w` | Add waters | Batch auto-place by map density (not single-at-cursor like Coot, needs to be fixed) |
+| `w` | Single water at crosshairs + refine | Replaces upstream batch `add_waters`; auto-uses solvent chain |
 | `a` | Autofit rotamer | |
 | `r` | Triple refine | Refine 3 residues (centered residue + 2 neighbors) |
 | `e` | Flip peptide | |
 | `t` | Add terminal residue | |
-| `j` | Jiggle fit | 100 trials, 1.0Å range |
+| `j` | Jiggle fit | 100 trials, 1.0 Å range |
 | `k` | Delete sidechain | Keeps backbone (N, CA, C, O, CB, H, HA) |
+| `d` | Drag atoms | Interactive pull-with-refinement at the active refinement selection size |
+| `g` | Toggle NCS ghosts | Translucent NCS copies of the hovered chain |
 | `l` | Go to next ligand (cycles) | Cycles through all ligands across all loaded molecules |
+| `o` / `Shift+O` | Next / prev NCS-related chain | Same residue number, walks the NCS group |
+| `p` / `Shift+P` | Next / prev difference-map peak | Above ±3σ, sorted by abs sigma |
+| `n` / `Shift+N` | Next / prev validation issue | Merged rama + rotamer + density-fit, toast labels which kind |
 | `z` | Autofit rotamer (alt) | Duplicate of `a` |
-| `o` | NCS jump | Cycles through NCS-related chains at same residue number |
 | `Shift+F` | Fill partial residue | |
 | `Shift+H` | Refine active residue (single) | |
 | `Shift+L` | Label atom on click | Was unmodified `l` |
@@ -71,11 +75,12 @@ README-MH.md (new)
 
 | Key | Was (upstream) | Now |
 |-----|----------------|-----|
-| `a` | Measure arbitrary distances | Moved to `d` |
+| `a` | Measure arbitrary distances | Unbound (`dist_ang_2d` keyPress="" in DEFAULT_SHORTCUTS) |
 | `r` | Restore scene | Moved to `v` |
-| `g` | Go to blob | Moved to `b` |
+| `g` | Go to blob | Moved to `b` (`g` now toggles NCS ghosts) |
 | `l` | Label atom on click | Moved to `Shift+L` |
-| `z` | Wiggle camera | Unbound |
+| `d` | Measure arbitrary distances (`dist_ang_2d`) | Now drag atoms |
+| `z` | Wiggle camera | Unbound (`z` reused for autofit-rotamer alt) |
 
 ### Other UX behavior changes
 
