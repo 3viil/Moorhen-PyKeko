@@ -11,7 +11,7 @@ Two GitHub repos backing the local workspace:
 | Repo | Purpose | Local Path |
 |------|---------|-----------|
 | [3viil/MoorHenMH](https://github.com/3viil/MoorHenMH) | Fork of moorhen-coot/Moorhen with customizations | `~/Moorhen` (production), `~/Moorhen-dev` (dev) |
-| [3viil/MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) | Electron wrapper around vite dev server | `~/MoorhenWrapper`, `~/MoorhenWrapper-Dev` |
+| [3viil/MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) | Electron wrapper around the vite dev server; one repo builds both the prod and dev apps | `~/MoorhenWrapper` |
 
 Two apps installed in `/Applications`:
 
@@ -240,17 +240,21 @@ cd ~/Moorhen-dev
 git remote add upstream https://github.com/moorhen-coot/Moorhen.git
 cd baby-gru && npm install
 
-# Reuse WASM from production build
+# Reuse the built WASM AND the build-generated LhasaReact from production.
+# Both are gitignored, so a fresh clone lacks them; copying avoids a second ~1h WASM build.
 cp -r ~/Moorhen/baby-gru/public/MoorhenAssets ~/Moorhen-dev/baby-gru/public/
+cp -r ~/Moorhen/baby-gru/src/LhasaReact      ~/Moorhen-dev/baby-gru/src/
 
-# Build dev wrapper variant
-mkdir ~/MoorhenWrapper-Dev
-cd ~/MoorhenWrapper-Dev
-# Copy main.js from MoorhenWrapper, but change MOORHEN_DIR to Moorhen-dev and port to 5174
-# Copy package.json, change name to "MoorhenDev"
-# Then: npm install && npx electron-forge package
-# And install to /Applications
+# Build the dev desktop app from the SAME wrapper repo (no separate copy needed):
+cd ~/MoorhenWrapper
+npm run package:dev
+xattr -rc out/MoorhenDev-darwin-arm64/MoorhenDev.app
+cp -r out/MoorhenDev-darwin-arm64/MoorhenDev.app /Applications/
 ```
+
+> The wrapper bakes the variant (target tree + port) into `variant.json` at package
+> time: `npm run package` → MoorhenLocal (Moorhen, 5173) and `npm run package:dev`
+> → MoorhenDev (Moorhen-dev, 5174), both from this one repo.
 
 ---
 
@@ -388,15 +392,12 @@ What it should do: when viewing chain A, show ghost copies of chains B, C, D *tr
 ~/Moorhen-dev/                     # dev source, branch: main (own clone)
   (same structure)
 
-~/MoorhenWrapper/                  # production wrapper
-  main.js
-  package.json
-  out/MoorhenLocal-darwin-arm64/   # built .app
-
-~/MoorhenWrapper-Dev/              # dev wrapper
-  main.js                          # points to Moorhen-dev, port 5174
-  package.json                     # name: "MoorhenDev"
-  out/MoorhenDev-darwin-arm64/
+~/MoorhenWrapper/                  # Electron wrapper — builds BOTH apps
+  main.js                          # reads variant.json (target tree + port)
+  forge.config.js                  # MOORHEN_VARIANT=prod|dev -> bakes variant.json
+  package.json                     # scripts: package (prod), package:dev
+  out/MoorhenLocal-darwin-arm64/   # built prod .app  (npm run package)
+  out/MoorhenDev-darwin-arm64/     # built dev  .app  (npm run package:dev)
 
 ~/emsdk/                           # Emscripten SDK
 
@@ -408,8 +409,11 @@ What it should do: when viewing chain A, show ghost copies of chains B, C, D *tr
 ### Wrapper key logic (main.js)
 
 ```javascript
-const MOORHEN_DIR = path.join(os.homedir(), "Moorhen/baby-gru");  // or Moorhen-dev
-const VITE_PORT = 5173;                                            // or 5174
+// Config comes from variant.json (baked by forge.config.js at package time),
+// with env-var overrides for unpackaged runs; defaults are the production values:
+const VARIANT = require("./variant.json");  // { moorhenSubdir, vitePort, logPath, title }
+const MOORHEN_DIR = path.join(os.homedir(), VARIANT.moorhenSubdir);  // Moorhen or Moorhen-dev
+const VITE_PORT = VARIANT.vitePort;                                  // 5173 (prod) / 5174 (dev)
 
 // On launch: spawn vite, wait for it to be ready, open BrowserWindow
 // On window close: kill vite child process
