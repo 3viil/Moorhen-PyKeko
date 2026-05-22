@@ -347,19 +347,77 @@ For ongoing customizations:
 
 ### NCS Ghosts
 
-Show ghost copies of NCS-related chains *transformed onto* a chosen master chain — to verify how well NCS copies agree. Implemented as:
+**What you see**: pick a master chain (or hover over one and hit `g`); every NCS-related chain is rendered as a translucent, color-cycled bond mesh *transformed onto* that master, so a tight NCS oligomer collapses into a single visually overlaid set of bonds and you can see immediately where copies disagree.
 
-1. **C++**: `molecules_container_t::get_ncs_ghost_matrix(imol, master, copy)` in `coot-patches/molecules-container-ncs-ghost.cc` (added to `checkout/coot-1.0` and linked into libcoot). Uses SSM `AlignSelectedMatch` with `sel_copy` as moving, `sel_master` as reference, returns the resulting 4×4 `TMatrix` as a space-separated string (row-major).
-2. **Embind**: `.function("get_ncs_ghost_matrix", &molecules_container_t::get_ncs_ghost_matrix)` in `moorhen-wrappers.cc` (inside the `molecules_container_js` class block).
-3. **JS**: `MoorhenMolecule.getNcsGhostMatrix()` parses the string, `drawNcsGhosts(masterChain, opacity)` and `clearNcsGhosts()` manage the overlay lifecycle.
-4. **Render**: each ghost is a fresh `CBs` `MoleculeRepresentation` for the copy chain, with `buf.symmetryMatrices = [matrix]` and `buf.changeColourWithSymmetry = false` so the existing instanced bond renderer draws it transformed without shader changes. Translucent + color-cycled per copy.
-5. **UI**: `NcsGhostsSettingsPanel` accordion in the molecule card (chain picker + opacity slider). Keyboard shortcut `g` toggles ghosts on the hovered chain.
+**Pipeline (top → bottom)**:
 
-The above relies on `get_ncs_related_chains()` (already in WASM) to discover NCS groups.
+1. **`o` shortcut handler** in `baby-gru/src/utils/MoorhenKeyboardPress.ts` — looks at `hoveredAtom` (falls back to `getCentreAtom`), grabs the chain id, and toggles `molecule.ncsGhostReps`. Toast tells you how many copies were drawn.
+2. **NCS Ghosts accordion** in `baby-gru/src/components/card/MoleculeCard/MoleculeCard.tsx` → `NcsGhostsSettingsPanel` in `MoleculeRepresentationSettingsCard.tsx`. Chain dropdown + opacity slider; stays open (lives inside an accordion, not a popover, so click-away doesn't dismiss).
+3. **`MoorhenMolecule.drawNcsGhosts(masterChain, opacity = 0.4)`** in `baby-gru/src/utils/MoorhenMolecule.ts`:
+   1. `getNcsRelatedChains()` → array of NCS groups (already in upstream)
+   2. For each copy chain in the master's group:
+      - Call `getNcsGhostMatrix(masterChain, copy)` → 16 floats parsed from a space-separated string
+      - **Layout fix**: SSM `TMatrix` is row-major; gl-matrix `mat4.invert` operates column-major; the renderer's `symmetryMatrices` path expects column-major. So we transpose row→col explicitly, no `mat4.invert` needed (we draw the *copy mesh as-is* with the copy→master transform; that's what puts the copy onto the master).
+      - Build a fresh `MoleculeRepresentation("CBs", "//${copy}/*", commandCentre)`, call `draw()`, then on each emitted buffer set:
+        - `buf.symmetryMatrices = [matrix]` ← drives the existing instanced renderer at line 5132 of `mgWebGL.tsx`
+        - `buf.changeColourWithSymmetry = false` ← otherwise the symmetry pass draws everything gray
+        - `buf.transparent = true` and walk `triangleColours` setting RGB to a palette pick and A to `opacity`
+        - `buf.alphaChanged = true; buf.isDirty = true` then `buildBuffers(rep.buffers, store)` to actually upload the new alpha to GPU
+   3. Push reps into `this.ncsGhostReps` so `clearNcsGhosts()` can take them down later.
+4. **`molecules_container_t::get_ncs_ghost_matrix`** in `coot-patches/molecules-container-ncs-ghost.cc`:
+   ```cpp
+   ssm::Align *SSMAlign = new ssm::Align();
+   int rc = SSMAlign->AlignSelectedMatch(asc.mol, asc.mol,
+                                         ssm::PREC_Normal, ssm::CONNECT_Flexible,
+                                         sel_copy /*moving*/, sel_master /*ref*/);
+   ```
+   Atoms are *not* mutated; only the 4×4 `TMatrix` is read out and serialized. Falls behind `#ifdef HAVE_SSMLIB`.
+5. **Embind binding** at the bottom of the `class_<molecules_container_js, base<molecules_container_t>>` chain in `wasm_src/moorhen-wrappers.cc`:
+   ```cpp
+   .function("get_ncs_ghost_matrix", &molecules_container_t::get_ncs_ghost_matrix)
+   ```
 
-### MCP control surface
+**Renderer reuse, not a new path**: NCS ghosts ride the same `symmetryMatrices` machinery that crystal symmetry already uses — `drawElementsInstanced` with a per-symmetry-pass uniform matrix, no shader work. The unconditional identity draw at line 5112 of `mgWebGL.tsx` means each ghost rep also draws once at the master's own position; that's invisible (translucent copy of a chain overlaid on itself) so we live with it.
 
-`MoorhenControlApi.ts` and `MoorhenControlBridge.tsx` (in `baby-gru/src/api/`) expose `window.MoorhenControlApi` and bridge it to the Electron wrapper's IPC channel. The wrapper runs a token-authenticated HTTP server on `127.0.0.1:<random>`, writing `{port, token, vitePort}` to `~/.moorhen-mcp/control-<vitePort>.json`. The separate [MoorhenMCP](https://github.com/3viil/MoorhenMCP) repo provides the stdio MCP server that POSTs `{token, verb, args}` to that endpoint so Claude can drive a running MoorhenLocal/MoorhenDev.
+**Why bonds work but `transformMatrix` didn't**: there is an older per-buffer `transformMatrix` slot that calls `drawTransformMatrix` (line 4904 of `mgWebGL.tsx`). That path uses plain `gl.drawElements` (not instanced) with the bond template's small index count, so for instanced CB rendering it produces `GL_INVALID_OPERATION: glDrawElements: Vertex buffer is not big enough`. Switching to `symmetryMatrices` was the fix.
+
+**Known limitations / future work**:
+- Ghosts regenerate from scratch on every chain change — could be cached per (molecule, master) tuple.
+- One palette (orange/green/blue/pink/yellow/purple), no per-ghost color picker yet.
+- Only fires for chains in the same NCS group as the master; cross-group "show me all the chains aligned onto X" would need looser matching.
+- `get_ncs_ghost_matrix` returns "" silently on alignment failure; no UI for that yet.
+
+### `o` — NCS jump
+
+Cycle through NCS-related chains at the same residue number. Handler in `MoorhenKeyboardPress.ts`: takes the current centre atom (or hovered atom), looks up its chain in `getNcsRelatedChains()`, finds the next chain in the group, then dispatches a centre update for the same residue number on that chain. Useful for visually walking equivalent positions in an oligomer one tap at a time.
+
+### `l` — Go to next ligand (cycles)
+
+Replaces upstream's `Shift+L` behavior. Handler iterates every `molecule.ligands` list across `molecules`, flattening to one stable list. A **module-level** `ligandCycleIdx` (in `MoorhenKeyboardPress.ts`) advances on each press so successive `l` presses walk through ligands deterministically — no Redux state, no per-component refs. Toast announces `<resName> <chain>/<resNum>` so you can tell where you landed.
+
+This deliberately *cycles* (`(idx + 1) % total`) rather than jumping to the nearest, matching Coot's go-to-ligand UX.
+
+### MCP control surface (Claude integration)
+
+Three layers, each in its own repo:
+
+| Layer | Lives in | Role |
+|-------|----------|------|
+| Renderer facade | `baby-gru/src/api/MoorhenControlApi.ts` (this fork) | `window.MoorhenControlApi.load/navigate/refine/...` — the actual scripted operations against the Redux store + `commandCentre` |
+| Renderer bridge | `baby-gru/src/api/MoorhenControlBridge.tsx` (this fork) | React component mounted by `MainContainer`; listens to wrapper IPC (`ipcRenderer.on('moorhen-control:invoke')`), dispatches to the facade, responds via `moorhen-control:reply`. After scene-changing ops also dispatches `setRequestDrawScene(true)` because headless control has no mouse events to trigger a repaint. |
+| Electron control server | `main.js` in [MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) | Token-authenticated HTTP server on `127.0.0.1:<random>`, writes `{port, token, vitePort, title, pid}` to `~/.moorhen-mcp/control-<vitePort>.json`. Forwards POSTed `{token, verb, args}` to the renderer via IPC. Serves `screenshot` directly via `webContents.capturePage()`. |
+| Stdio MCP server | [MoorhenMCP](https://github.com/3viil/MoorhenMCP) (separate repo) | `dist/server.js` is the actual MCP endpoint Claude talks to. Resolves the control file (default port 5173 = MoorhenLocal, override with `MOORHEN_VITE_PORT=5174` for MoorhenDev), POSTs to the wrapper, returns text or image content. |
+
+Registration:
+```bash
+claude mcp add moorhen -- node /Users/mhilgers/MoorhenMCP/dist/server.js
+```
+
+Available tools (14): `moorhen_get_state`, `load_coordinates`, `load_map`, `go_to_residue`, `refine`, `auto_fit_rotamer`, `flip_peptide`, `add_terminal_residue`, `add_waters`, `delete`, `set_active_map`, `undo`, `redo`, `screenshot`.
+
+**To add a new tool**: extend `MoorhenControlApi` (renderer) → add a case in `MoorhenControlBridge`'s verb switch → expose it as a tool in `MoorhenMCP/src/server.ts`. The wrapper layer is generic and forwards anything.
+
+**Why a control file instead of a known port**: each Moorhen app picks a random port to avoid collisions and writes both the port and a per-launch token. The MCP server reads that file to find a live app — supports running both MoorhenLocal and MoorhenDev simultaneously (different vite ports → different control files).
 
 ## Future Work
 
