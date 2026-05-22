@@ -397,6 +397,49 @@ Replaces upstream's `Shift+L` behavior. Handler iterates every `molecule.ligands
 
 This deliberately *cycles* (`(idx + 1) % total`) rather than jumping to the nearest, matching Coot's go-to-ligand UX.
 
+### `w` — Single water at crosshairs + refine
+
+Replaces upstream's batch `add_waters` on the `w` shortcut. Pipeline:
+
+1. **Handler** in `MoorhenKeyboardPress.ts`: reads `state.glRef.origin` (negated atom coord of the view centre), calls `targetMolecule.addWaterAtPosition(-ox, -oy, -oz)` → CID of the new water, then `refine_residues_using_atom_cid` in `SINGLE` mode against the active map.
+2. **JS wrapper** `MoorhenMolecule.addWaterAtPosition(x, y, z)`: thin call to the new C++ binding; flips `setAtomsDirty(true)` so the next redraw refetches bonds.
+3. **C++** `molecules_container_t::add_water_at_position` in `coot-patches/molecules-container-add-water-at-position.cc`: constructs a 1-element `coot::minimol::molecule` at (x,y,z) and calls `molecules[imol].insert_waters_into_molecule(water_mol, "HOH")` — which already handles solvent-chain selection, creating one if absent, and incrementing seqNum. Then scans the mmdb hierarchy for the highest-seqNum HOH in any solvent chain and returns its CID `/1/<chain>/<resno>`.
+
+The refine step is one extra `cootCommand` call so we kept it. Adding it as `WHOLE_MOLECULE` mode would refine too much; we use `SINGLE` so only the new water moves to fit density.
+
+### `p` — Next difference-map peak
+
+Cycle through signed difference-map peaks above ±3σ. Uses already-bound `difference_map_peaks(imol_map, imol_protein, n_rmsd)`. Handler in `MoorhenKeyboardPress.ts`:
+- Auto-finds the first map with `isDifference: true` from `state.maps`
+- Caches the peaks list per `(model, map)` tuple in module scope; refetches when the cache key changes
+- Sorts by `|featureValue|` descending so the biggest |sigma| comes first
+- `Shift+P` walks the same list backward (`(idx - 1 + len) % len`)
+- Dispatches `setOrigin([-x, -y, -z])` to centre on the peak
+
+### `n` — Next validation issue (merged)
+
+Merges three categories into one cycle:
+- **Ramachandran** (`ramachandran_analysis`): probability < 0.02 → outlier; badness = (1-p)*100
+- **Rotamer** (`rotamer_analysis`): probability < 0.02 → outlier; badness = (1-p)*100
+- **Density-fit** (`density_fit_analysis`, only if a map is loaded): take worst 30 by function_value, normalize against the worst as 100
+
+Each entry carries a `type` tag (`rama` | `rotamer` | `density`) so the toast says `Issue 4/17 (rotamer): //A/123 PHE p=0.018`. Merged list sorted by per-category-normalized badness descending. Module-level cycle index; `Shift+N` reverses.
+
+Clashes (the planned 4th category) need a fresh Embind value-object registration for `coot::plain_atom_overlap_t` + `coot::atom_spec_t` so the existing `get_atom_overlaps` API can be exposed to JS. Deferred.
+
+### `d` — Drag atoms (interactive refinement)
+
+Equivalent to right-click → "Drag atoms" in the context menu. Mirrors `MoorhenDragAtomsButton.nonCootCommand`:
+- Picks the chosen molecule + residue from `hoveredAtom` (or `get_active_atom` fallback when `visibleMolecules` is empty)
+- Reads `state.refinementSettings.refinementSelection` (`SINGLE` / `TRIPLE` / `QUINTUPLE` / `HEPTUPLE` / `SPHERE`) and builds the fragment CID accordingly (`SPHERE` uses `getNeighborResiduesCids(cid, 6)`)
+- Dispatches `setShownControl({ name: "acceptRejectDraggingAtoms", payload: { molNo, fragmentCid } })` and `setIsDraggingAtoms(true)`
+
+The Accept/Reject snackbar handles the rest. `dist_ang_2d` was on `d` upstream; that shortcut is now empty-keyed in `DEFAULT_SHORTCUTS` (still in the keymap, just unbound).
+
+### Space-jump robustness
+
+`jump_next_residue` / `jump_previous_residue` used to bail when `state.molecules.visibleMolecules` was empty (`getCentreAtom` filters by `isVisible()`). The MCP `load_coordinates` flow doesn't dispatch `showMolecule`, so models loaded via Claude never landed in that list and space did nothing. Handler now falls back to `hoveredAtom.molecule ?? molecules[0]` and calls `get_active_atom` directly when `getCentreAtom` returns null.
+
 ### MCP control surface (Claude integration)
 
 Three layers, each in its own repo:

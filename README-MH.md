@@ -19,9 +19,25 @@ Visualize non-crystallographic symmetry by overlaying every NCS-related chain *t
 - Adds a new C++ binding `get_ncs_ghost_matrix(imol, master, copy)` exposed via Embind
 - Built on instanced bond rendering via the existing `symmetryMatrices` path — no shader changes
 
-### `o` — NCS jump
+### `w` — Single water at crosshairs (new)
 
-Cycle through NCS-related chains at the same residue number. Useful to walk between equivalent positions in an oligomer.
+Replaces upstream's batch `add_waters` on this key. Places a single HOH at the current view centre (auto-uses the molecule's solvent chain, creates one if absent), then single-residue refines the new water against the active map. Adds a C++ wrapper `add_water_at_position(imol, x, y, z)` that returns the new water's CID.
+
+### `p` / `Shift+P` — Difference-map peak cycler (new)
+
+Find the next signed difference-map peak above ±3σ. Sorted by |sigma|; toast announces e.g. `Peak 3/24: -5.2σ`. `Shift+P` walks backward through the same list.
+
+### `n` / `Shift+N` — Validation issue cycler (new)
+
+Merged outlier list across three categories — Ramachandran (p<0.02), rotamer (p<0.02), and density-fit (worst residues by libcoot's `density_fit_analysis`). Each entry is tagged so the toast tells you which kind: `Issue 4/17 (rotamer): //A/123 PHE p=0.018`. Sorted by per-category-normalized badness so worst things come first; `Shift+N` reverses.
+
+### `d` — Drag atoms (interactive refinement) (new)
+
+Equivalent to right-click → "Drag atoms" on the residue under the cursor: enters live-refinement-with-pull mode at the active refinement selection size (SINGLE / TRIPLE / QUINTUPLE / HEPTUPLE / SPHERE, whichever is set). Accept/Reject snackbar appears for confirmation.
+
+### `o` / `Shift+O` — NCS jump
+
+Cycle forward (`o`) or backward (`Shift+O`) through NCS-related chains at the same residue number — useful to walk equivalent positions in an oligomer.
 
 ### `l` — Go to next ligand
 
@@ -39,16 +55,19 @@ Shortcuts only fire when the mouse cursor is over the 3D canvas (Moorhen convent
 
 | Key | Action | Notes |
 |-----|--------|-------|
-| `w` | Add waters | Batch auto-place by map density |
+| `w` | Single water at crosshairs + refine | Replaces upstream batch `add_waters`; auto-uses solvent chain |
 | `a` | Autofit rotamer | |
 | `r` | Triple refine | Refine 3 residues (active + 2 neighbors) |
 | `e` | Flip peptide | |
 | `t` | Add terminal residue | |
 | `j` | Jiggle fit | 100 trials, 1.0 Å range |
 | `k` | Delete sidechain | Keeps backbone atoms |
+| `d` | Drag atoms | Interactive pull-with-refinement at the current refinement selection size |
 | `l` | Go to next ligand (cycles) | Cycles through all ligands across all loaded molecules |
-| `o` | NCS jump | Cycle through NCS-related chains at the same residue |
+| `o` / `Shift+O` | Next / prev NCS-related chain | Same residue number, walk the NCS group |
 | `g` | Toggle NCS ghosts | Translucent NCS copies overlaid on the hovered chain |
+| `p` / `Shift+P` | Next / prev difference-map peak | Above ±3σ, sorted by absolute sigma |
+| `n` / `Shift+N` | Next / prev validation issue | Merged rama + rotamer + density-fit, toast labels which kind |
 | `z` | Autofit rotamer (alt) | Duplicate of `a` |
 | `Shift+F` | Fill partial residue | |
 | `Shift+H` | Refine active residue (single) | |
@@ -60,7 +79,7 @@ Shortcuts only fire when the mouse cursor is over the 3D canvas (Moorhen convent
 
 | Key | Was (upstream) | Now |
 |-----|----------------|-----|
-| `a` | Measure arbitrary distances | Moved to `d` |
+| `a` | Measure arbitrary distances | Unbound (was `dist_ang_2d`; `d` now drag atoms) |
 | `r` | Restore scene | Moved to `v` |
 | `g` | Go to blob | Moved to `b` (`g` now toggles NCS ghosts) |
 | `l` | Label atom on click | Moved to `Shift+L` |
