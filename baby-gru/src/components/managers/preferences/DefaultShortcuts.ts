@@ -170,9 +170,15 @@ export const DEFAULT_SHORTCUTS: { [key: string]: Shortcut } = {
     },
     dist_ang_2d: {
         modifiers: [],
-        keyPress: "d",
-        label: "Measure arbitrary distances and angles",
+        keyPress: "",
+        label: "Measure arbitrary distances and angles (was d; rebound)",
         viewOnly: true,
+    },
+    drag_atoms: {
+        modifiers: [],
+        keyPress: "d",
+        label: "Drag atoms (interactive refinement with mouse pull)",
+        viewOnly: false,
     },
     label_atom: {
         modifiers: ["shiftKey"],
@@ -298,6 +304,36 @@ export const DEFAULT_SHORTCUTS: { [key: string]: Shortcut } = {
         modifiers: [],
         keyPress: "o",
         label: "Jump to next NCS-related chain",
+        viewOnly: true,
+    },
+    ncs_jump_prev: {
+        modifiers: ["shiftKey"],
+        keyPress: "o",
+        label: "Jump to previous NCS-related chain",
+        viewOnly: true,
+    },
+    next_diff_peak: {
+        modifiers: [],
+        keyPress: "p",
+        label: "Jump to next difference-map peak (cycles by abs sigma)",
+        viewOnly: true,
+    },
+    prev_diff_peak: {
+        modifiers: ["shiftKey"],
+        keyPress: "p",
+        label: "Jump to previous difference-map peak",
+        viewOnly: true,
+    },
+    next_issue: {
+        modifiers: [],
+        keyPress: "n",
+        label: "Jump to next validation issue (rama / rotamer / density-fit)",
+        viewOnly: true,
+    },
+    prev_issue: {
+        modifiers: ["shiftKey"],
+        keyPress: "n",
+        label: "Jump to previous validation issue",
         viewOnly: true,
     },
 };

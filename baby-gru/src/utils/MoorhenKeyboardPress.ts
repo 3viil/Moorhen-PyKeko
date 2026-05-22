@@ -7,6 +7,7 @@ import { quatToMat4, quat4Inverse } from '../WebGLgComponents/quatToMat4';
 import { getDeviceScale } from '../WebGLgComponents/webGLUtils';
 import { vec3Create } from '../WebGLgComponents/mgMaths';
 import { moorhen } from "../types/moorhen";
+import { libcootApi } from "../types/libcoot";
 import { webGL } from "../types/mgWebGL";
 import { setHoveredAtom } from "../store/hoveringStatesSlice";
 import { changeMapRadius } from "../store/mapContourSettingsSlice";
@@ -15,9 +16,20 @@ import { Shortcut } from '../components/managers/preferences';
 import { setOrigin, setZoom, setQuat, setShortCutHelp,setClipStart, setClipEnd, triggerClearLabels } from "../store/glRefSlice";
 import { cidToSpec, getCentreAtom } from "./utils"
 import { setShownControl, RootState, enqueueSnackbar  } from '@/store';
+import { setIsDraggingAtoms } from "../store/generalStatesSlice";
 
 // Module-level cycle index for go_to_ligand shortcut. Starts at -1 so first press goes to index 0.
 let ligandCycleIdx = -1;
+// Module-level state for next_diff_peak shortcut. Peaks refetched on each press;
+// idx advances even if the model didn't change, so successive presses walk the list.
+let diffPeakCycleIdx = -1;
+let diffPeakCacheKey = "";
+let diffPeakCache: Array<{ x: number; y: number; z: number; sigma: number }> = [];
+// Module-level state for next_issue shortcut. Same idea — refetch when we've
+// walked the whole list or model/map changed.
+let issueCycleIdx = -1;
+let issueCacheKey = "";
+let issueCache: Array<{ cid: string; type: string; badness: number; label: string }> = [];
 
 const apresEdit = (molecule: moorhen.Molecule, glRef: React.RefObject<webGL.MGWebGL>, dispatch: Dispatch<AnyAction>) => {
     molecule.setAtomsDirty(true)
@@ -407,27 +419,39 @@ export const moorhenKeyPress = (
     }
 
     else if (action === 'jump_next_residue' || action === 'jump_previous_residue') {
-        getCentreAtom(molecules, commandCentre, store)
-        .then(result => {
-            if (!result) {
-                return
+        (async () => {
+            let selectedMolecule: moorhen.Molecule | undefined
+            let residueCid: string | undefined
+            const [centreMol, centreCid] = await getCentreAtom(molecules, commandCentre, store)
+            if (centreMol && centreCid) {
+                selectedMolecule = centreMol
+                residueCid = centreCid
+            } else {
+                // Fall back: any loaded molecule (visibleMolecules state may be empty
+                // if the molecule was loaded via a path that didn't dispatch showMolecule,
+                // e.g. the MCP load_coordinates flow)
+                const fallbackMol = hoveredAtom.molecule ?? molecules[0]
+                if (!fallbackMol) return
+                const origin = store.getState().glRef.origin
+                try {
+                    const resp = await commandCentre.current.cootCommand({
+                        returnType: "int_string_pair",
+                        command: "get_active_atom",
+                        commandArgs: [-origin[0], -origin[1], -origin[2], `${fallbackMol.molNo}`],
+                    }, false) as moorhen.WorkerResponse<libcootApi.PairType<number, string>>
+                    residueCid = resp.data?.result?.result?.second
+                    selectedMolecule = fallbackMol
+                } catch (e) { return }
             }
-            const [selectedMolecule, residueCid] = result
-            if (typeof selectedMolecule === 'undefined' || !residueCid) {
-                return
-            }
+            if (!selectedMolecule || !residueCid) return
 
             const chosenAtom = cidToSpec(residueCid)
             const selectedSequence = selectedMolecule.sequences.find(sequence => sequence.chain === chosenAtom.chain_id)
-            if (typeof selectedSequence === 'undefined') {
-                return
-            }
-            
-            let nextResNum: number
+            if (!selectedSequence) return
             const selectedResidueIndex = selectedSequence.sequence.findIndex(res => res.resNum === chosenAtom.res_no)
-            if (selectedResidueIndex === -1) {
-                return
-            } else if (action === 'jump_next_residue' && selectedResidueIndex !== selectedSequence.sequence.length - 1) {
+            if (selectedResidueIndex === -1) return
+            let nextResNum: number
+            if (action === 'jump_next_residue' && selectedResidueIndex !== selectedSequence.sequence.length - 1) {
                 nextResNum = selectedSequence.sequence[selectedResidueIndex + 1].resNum
             } else if (action === 'jump_previous_residue' && selectedResidueIndex !== 0) {
                 nextResNum = selectedSequence.sequence[selectedResidueIndex - 1].resNum
@@ -435,9 +459,7 @@ export const moorhenKeyPress = (
                 return
             }
             selectedMolecule.centreAndAlignViewOn(`/*/${chosenAtom.chain_id}/${nextResNum}-${nextResNum}/`, true)
-        })
-        .catch(err => console.log(err))
-
+        })().catch(err => console.log(err))
     }
 
     else if (action === 'decrease_front_clip') {
@@ -499,17 +521,100 @@ export const moorhenKeyPress = (
         return doShortCut('add_terminal_residue_directly_using_cid', formatArgs)
     }
 
+    else if (action === 'drag_atoms' && activeMap && !viewOnly && molecules.length > 0) {
+        (async () => {
+            // Mirror MoorhenDragAtomsButton.nonCootCommand: pick the chosen molecule/residue,
+            // build a fragment CID for the active refinement selection, then enter drag mode.
+            let chosenMolecule: moorhen.Molecule | undefined
+            let chosenAtom: moorhen.ResidueSpec | undefined
+            if (hoveredAtom.molecule && hoveredAtom.cid) {
+                chosenMolecule = hoveredAtom.molecule
+                chosenAtom = cidToSpec(hoveredAtom.cid)
+            } else {
+                const [centreMol, centreCid] = await getCentreAtom(molecules, commandCentre, store)
+                if (!centreMol || !centreCid) {
+                    // Fallback: derive from active atom on molecules[0] regardless of visibleMolecules state
+                    const fallbackMol = molecules[0]
+                    if (!fallbackMol) return
+                    const origin = store.getState().glRef.origin
+                    const resp = await commandCentre.current.cootCommand({
+                        returnType: "int_string_pair",
+                        command: "get_active_atom",
+                        commandArgs: [-origin[0], -origin[1], -origin[2], `${fallbackMol.molNo}`],
+                    }, false) as moorhen.WorkerResponse<libcootApi.PairType<number, string>>
+                    const fbCid = resp.data?.result?.result?.second
+                    if (!fbCid) return
+                    chosenMolecule = fallbackMol
+                    chosenAtom = cidToSpec(fbCid)
+                } else {
+                    chosenMolecule = centreMol
+                    chosenAtom = cidToSpec(centreCid)
+                }
+            }
+            if (!chosenMolecule || !chosenAtom) return
+
+            const refinementSelection = (store.getState() as any).refinementSettings?.refinementSelection ?? "SINGLE"
+            const selectedSequence = chosenMolecule.sequences.find(s => s.chain === chosenAtom.chain_id)
+            const selectedResidueIndex = selectedSequence
+                ? selectedSequence.sequence.findIndex(r => r.resNum === chosenAtom.res_no)
+                : -1
+            const selectionType = selectedResidueIndex === -1 ? "SINGLE" : refinementSelection
+            let start: number, stop: number
+            let sphereResidueCids: string[] | undefined
+            switch (selectionType) {
+                case "SINGLE":
+                    start = chosenAtom.res_no; stop = chosenAtom.res_no; break
+                case "TRIPLE":
+                    start = selectedResidueIndex > 0 ? selectedSequence.sequence[selectedResidueIndex - 1].resNum : chosenAtom.res_no
+                    stop = selectedResidueIndex < selectedSequence.sequence.length - 1 ? selectedSequence.sequence[selectedResidueIndex + 1].resNum : chosenAtom.res_no
+                    break
+                case "QUINTUPLE":
+                    start = selectedResidueIndex >= 2 ? selectedSequence.sequence[selectedResidueIndex - 2].resNum : chosenAtom.res_no
+                    stop = selectedResidueIndex < selectedSequence.sequence.length - 2 ? selectedSequence.sequence[selectedResidueIndex + 2].resNum : chosenAtom.res_no
+                    break
+                case "HEPTUPLE":
+                    start = selectedResidueIndex >= 3 ? selectedSequence.sequence[selectedResidueIndex - 3].resNum : chosenAtom.res_no
+                    stop = selectedResidueIndex < selectedSequence.sequence.length - 3 ? selectedSequence.sequence[selectedResidueIndex + 3].resNum : chosenAtom.res_no
+                    break
+                case "SPHERE":
+                    sphereResidueCids = await chosenMolecule.getNeighborResiduesCids(chosenAtom.cid, 6)
+                    break
+                default:
+                    start = chosenAtom.res_no; stop = chosenAtom.res_no
+            }
+            const fragmentCid = selectionType === "SPHERE" && sphereResidueCids
+                ? sphereResidueCids
+                : [`//${chosenAtom.chain_id}/${start}-${stop}/*`]
+            dispatch(setShownControl({ name: "acceptRejectDraggingAtoms", payload: { molNo: chosenMolecule.molNo, fragmentCid } }))
+            dispatch(setHoveredAtom({ molecule: null, cid: null, atomInfo: null }))
+            dispatch(setIsDraggingAtoms(true))
+            if (showShortcutToast) dispatch(enqueueSnackbar({ message: `Drag atoms: ${selectionType}`, variant: "info" }))
+        })()
+        return false
+    }
+
     else if (action === 'add_water' && activeMap && !viewOnly && molecules.length > 0) {
-        const targetMolecule = molecules[0]
-        commandCentre.current.cootCommand({
-            returnType: "number",
-            command: "add_waters",
-            commandArgs: [targetMolecule.molNo, activeMap.molNo],
-            changesMolecules: [targetMolecule.molNo],
-        }, true).then(_ => {
+        // Single water at the view crosshairs + single-residue refine.
+        // glRef.origin is the negated atom coordinate of the view centre.
+        const targetMolecule = hoveredAtom.molecule ?? molecules[0]
+        const [ox, oy, oz] = originState
+        ;(async () => {
+            const cid = await targetMolecule.addWaterAtPosition(-ox, -oy, -oz)
+            if (!cid) {
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Add water failed",  variant: "warning"}))
+                return
+            }
+            try {
+                await commandCentre.current.cootCommand({
+                    returnType: "status",
+                    command: "refine_residues_using_atom_cid",
+                    commandArgs: [targetMolecule.molNo, cid, "SINGLE", 4000],
+                    changesMolecules: [targetMolecule.molNo],
+                }, true)
+            } catch (e) { console.log(e) }
             apresEdit(targetMolecule, glRef, dispatch)
-        })
-        if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Add waters",  variant: "info"}))
+            if (showShortcutToast) dispatch(enqueueSnackbar({ message:`Added water ${cid} + refined`,  variant: "info"}))
+        })()
         return false
     }
 
@@ -557,7 +662,8 @@ export const moorhenKeyPress = (
         return false
     }
 
-    else if (action === 'ncs_jump' && molecules.length > 0) {
+    else if ((action === 'ncs_jump' || action === 'ncs_jump_prev') && molecules.length > 0) {
+        const step = action === 'ncs_jump' ? 1 : -1;
         (async () => {
             const targetMolecule = hoveredAtom.molecule ?? molecules[0];
             let currentChain: string | null = null;
@@ -585,12 +691,132 @@ export const moorhenKeyPress = (
                 return;
             }
             const idx = group.indexOf(currentChain);
-            const nextChain = group[(idx + 1) % group.length];
+            const nextChain = group[(idx + step + group.length) % group.length];
             const nextCid = `/*/${nextChain}/${currentResNo}-${currentResNo}/`;
             if (showShortcutToast) dispatch(enqueueSnackbar({ message: `NCS jump to chain ${nextChain}`, variant: "info" }));
             await targetMolecule.centreAndAlignViewOn(nextCid, true);
         })();
         return false;
+    }
+
+    else if (action === 'next_diff_peak' || action === 'prev_diff_peak') {
+        const step = action === 'next_diff_peak' ? 1 : -1;
+        (async () => {
+            const maps = (store.getState() as any).maps as moorhen.Map[]
+            const diffMap = Array.isArray(maps) ? maps.find(m => m.isDifference) : null
+            if (!diffMap) {
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No difference map loaded", variant: "warning" }))
+                return
+            }
+            const targetMolecule = hoveredAtom.molecule ?? molecules[0]
+            if (!targetMolecule) {
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No molecule loaded", variant: "warning" }))
+                return
+            }
+            const cacheKey = `${targetMolecule.molNo}|${diffMap.molNo}`
+            if (cacheKey !== diffPeakCacheKey || diffPeakCache.length === 0) {
+                const resp = await commandCentre.current.cootCommand({
+                    returnType: "interesting_places_data",
+                    command: "difference_map_peaks",
+                    commandArgs: [diffMap.molNo, targetMolecule.molNo, 3.0],
+                }, false) as moorhen.WorkerResponse<libcootApi.InterestingPlaceDataJS[]>
+                const places = resp.data.result.result ?? []
+                diffPeakCache = places
+                    .map(p => ({ x: p.coordX, y: p.coordY, z: p.coordZ, sigma: p.featureValue }))
+                    .sort((a, b) => Math.abs(b.sigma) - Math.abs(a.sigma))
+                diffPeakCacheKey = cacheKey
+                diffPeakCycleIdx = -1
+            }
+            if (diffPeakCache.length === 0) {
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No diff-map peaks above 3σ", variant: "info" }))
+                return
+            }
+            diffPeakCycleIdx = (diffPeakCycleIdx + step + diffPeakCache.length) % diffPeakCache.length
+            const peak = diffPeakCache[diffPeakCycleIdx]
+            dispatch(setOrigin([-peak.x, -peak.y, -peak.z]))
+            if (showShortcutToast) dispatch(enqueueSnackbar({
+                message: `Peak ${diffPeakCycleIdx + 1}/${diffPeakCache.length}: ${peak.sigma.toFixed(1)}σ`,
+                variant: "info",
+            }))
+        })()
+        return false
+    }
+
+    else if (action === 'next_issue' || action === 'prev_issue') {
+        const step = action === 'next_issue' ? 1 : -1;
+        (async () => {
+            const targetMolecule = hoveredAtom.molecule ?? molecules[0]
+            if (!targetMolecule) {
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No molecule loaded", variant: "warning" }))
+                return
+            }
+            const mapMolNo = activeMap?.molNo ?? -1
+            const cacheKey = `${targetMolecule.molNo}|${mapMolNo}`
+            if (cacheKey !== issueCacheKey || issueCache.length === 0) {
+                const wrap = (cmd: string, args: any[]) => commandCentre.current.cootCommand({
+                    returnType: "validation_data",
+                    command: cmd,
+                    commandArgs: args,
+                }, false) as Promise<moorhen.WorkerResponse<libcootApi.ValidationInformationJS[]>>
+                const promises: Promise<{ data: libcootApi.ValidationInformationJS[]; type: string }>[] = [
+                    wrap("ramachandran_analysis", [targetMolecule.molNo]).then(r => ({ data: r.data.result.result ?? [], type: "rama" })),
+                    wrap("rotamer_analysis",      [targetMolecule.molNo]).then(r => ({ data: r.data.result.result ?? [], type: "rotamer" })),
+                ]
+                if (mapMolNo >= 0) {
+                    promises.push(wrap("density_fit_analysis", [targetMolecule.molNo, mapMolNo]).then(r => ({ data: r.data.result.result ?? [], type: "density" })))
+                }
+                const results = await Promise.all(promises)
+                const merged: typeof issueCache = []
+                for (const { data, type } of results) {
+                    if (data.length === 0) continue
+                    // Per-category badness normalization (worst → 100)
+                    if (type === "rama" || type === "rotamer") {
+                        // value is a probability; outliers have p<0.02
+                        for (const r of data) {
+                            if (r.value >= 0 && r.value < 0.02) {
+                                merged.push({
+                                    cid: `//${r.chainId}/${r.seqNum}`,
+                                    type,
+                                    badness: (1 - r.value) * 100,
+                                    label: `${r.restype ?? ""} p=${r.value.toFixed(3)}`,
+                                })
+                            }
+                        }
+                    } else if (type === "density") {
+                        // density_fit_analysis: function_value is a fit score; higher = worse
+                        // Take the worst 30 as outliers, normalized to that range.
+                        const sorted = [...data].filter(r => r.value > 0).sort((a, b) => b.value - a.value).slice(0, 30)
+                        if (sorted.length > 0) {
+                            const worst = sorted[0].value
+                            for (const r of sorted) {
+                                merged.push({
+                                    cid: `//${r.chainId}/${r.seqNum}`,
+                                    type,
+                                    badness: (r.value / worst) * 100,
+                                    label: `${r.restype ?? ""} fit=${r.value.toFixed(2)}`,
+                                })
+                            }
+                        }
+                    }
+                }
+                merged.sort((a, b) => b.badness - a.badness)
+                issueCache = merged
+                issueCacheKey = cacheKey
+                issueCycleIdx = -1
+            }
+            if (issueCache.length === 0) {
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No validation issues found", variant: "info" }))
+                return
+            }
+            issueCycleIdx = (issueCycleIdx + step + issueCache.length) % issueCache.length
+            const issue = issueCache[issueCycleIdx]
+            targetMolecule.centreOn(issue.cid, true, true)
+            if (showShortcutToast) dispatch(enqueueSnackbar({
+                message: `Issue ${issueCycleIdx + 1}/${issueCache.length} (${issue.type}): ${issue.cid} ${issue.label}`,
+                variant: "info",
+            }))
+        })()
+        return false
     }
 
     else if (action === 'go_to_ligand') {

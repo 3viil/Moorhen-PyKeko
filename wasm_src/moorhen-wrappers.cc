@@ -317,5 +317,6 @@ EMSCRIPTEN_BINDINGS(moorhen_container) {
     .function("export_metaballs_as_gltf", &molecules_container_js::export_metaballs_as_gltf)
     .function("export_metaballs_as_3mf_xml", &molecules_container_js::export_metaballs_as_3mf_xml)
     .function("get_ncs_ghost_matrix", &molecules_container_t::get_ncs_ghost_matrix)
+    .function("add_water_at_position", &molecules_container_t::add_water_at_position)
     ;
 }

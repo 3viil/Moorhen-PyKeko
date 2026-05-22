@@ -1,5 +1,5 @@
 #!/bin/bash
-# Apply NCS ghost patches to the coot-1.0 checkout
+# Apply NCS ghost + single-water patches to the coot-1.0 checkout
 # Run after `./moorhen_build.sh` has cloned coot but before building moorhen target
 
 set -e
@@ -12,8 +12,9 @@ if [ ! -d "$COOT_DIR" ]; then
     exit 1
 fi
 
-# Copy the new .cc file
+# Copy the new .cc files
 cp "$SCRIPT_DIR/molecules-container-ncs-ghost.cc" "$COOT_DIR/api/"
+cp "$SCRIPT_DIR/molecules-container-add-water-at-position.cc" "$COOT_DIR/api/"
 
 # Apply the header patch
 cd "$COOT_DIR"

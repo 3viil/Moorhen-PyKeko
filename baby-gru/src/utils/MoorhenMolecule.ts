@@ -2706,6 +2706,25 @@ export class MoorhenMolecule {
         return this.ncsGhostReps.length;
     }
 
+    /**
+     * Place a single water at the given world-space position, auto-using this
+     * molecule's solvent chain (creates one if absent). Returns the CID of the
+     * new water, or null on failure. Atom buffers are dirtied so the next
+     * redraw picks up the new residue.
+     */
+    async addWaterAtPosition(x: number, y: number, z: number): Promise<string | null> {
+        const result = (await this.commandCentre.current.cootCommand({
+            returnType: "status",
+            command: "add_water_at_position",
+            commandArgs: [this.molNo, x, y, z],
+            changesMolecules: [this.molNo],
+        }, true)) as moorhen.WorkerResponse<string>;
+        const cid = result.data.result.result;
+        if (!cid || typeof cid !== "string" || cid.length === 0) return null;
+        this.setAtomsDirty(true);
+        return cid;
+    }
+
     clearNcsGhosts() {
         this.ncsGhostReps.forEach(rep => rep.deleteBuffers());
         this.ncsGhostReps = [];
