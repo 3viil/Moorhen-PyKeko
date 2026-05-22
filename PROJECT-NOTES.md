@@ -485,13 +485,72 @@ Available tools (14): `moorhen_get_state`, `load_coordinates`, `load_map`, `go_t
 
 ## Future Work
 
+### PyMOL command translator in Interactive Scripting (planned)
+
+The "Interactive scripting…" modal currently runs plain JavaScript via
+`MoorhenScriptAPI.exe()` (see `baby-gru/src/utils/MoorhenScriptAPI.ts`).
+The plan is to add a **JavaScript / PyMOL** mode toggle to the modal so users
+can paste `.pml` scripts and have them run against Moorhen.
+
+**Why**: most structural biologists already think in PyMOL command vocabulary
+(`fetch`, `show cartoon`, `color red, chain A`, `select active_site, byres
+(chain A within 4 of resn HEM)`). Letting that paste-and-run lets people port
+PyMOL recipe books into Moorhen without learning the JS/Redux layer.
+
+**Scope** (per the approved defaults):
+- Tier 1: `fetch`, `load`, `delete`, `enable`/`disable`, `zoom`, `orient`,
+  `center`, `set_view`
+- Tier 2: `show`, `hide`, `as`, `color`, `spectrum`, `bg_color`, `set
+  transparency`
+- Tier 3: full `select` with the complete selection algebra (chain/resi/resn/
+  name predicates, macros like `polymer.protein`/`solvent`/`backbone`/
+  `sidechain`, topology ops `byres`/`bychain`/`byobject`/`bound_to`/`extend`,
+  distance ops `within`/`near_to`/`beyond`/`around`, property comparisons
+  `b > 30`, `q < 0.5`, set reducers `first`/`last`)
+- Tier 4: `distance` measurements, `png`/`ray` screenshots
+- Tier 5: misc `set` commands wired to scene settings
+
+**Out of scope**: `iterate`/`alter`/`cmd.do` (arbitrary Python expressions),
+movie commands, `align`/`super`/`cealign`, `state` selector, ray-tracing,
+CGO objects.
+
+**Architecture summary**:
+- `MoorhenPymolParser.ts` — line tokenizer
+- `MoorhenPymolSelectionParser.ts` — recursive-descent selection grammar
+  parser, two-tier compilation (CID-pure vs. needs-runtime-filter)
+- `MoorhenPymolFilter.ts` — runtime atom filter + kd-tree for distance
+  operators + distance-based covalent-bond approximation
+- `MoorhenPymolTranslator.ts` — dispatcher: maps each PyMOL command to the
+  Moorhen API call(s) and awaits sequentially
+
+**Bond graph**: distance-based approximation (covalent if d ≤ r1 + r2 + 0.4 Å)
+rather than binding the libcoot bond list. ≥95% accuracy on standard residues,
+documented limitation for unusual covalent geometries.
+
+Estimated effort: ~3 working days for the full pipeline plus tests + docs.
+Full implementation plan is in [`docs/pymol-translator-plan.md`](docs/pymol-translator-plan.md).
+
 ### Other potential improvements
 
-- **NCS edit propagation**: when editing one NCS copy, optionally apply same changes to others (Coot 0.9.x had this)
-- **Coot Python script translator**: convert common Coot `.py` scripts to Moorhen JS equivalents
-- **Validation report panel**: unified view of Ramachandran + rotamer + clashes + density fit
+- **NCS edit propagation**: when editing one NCS copy, optionally apply same
+  changes to others (Coot 0.9.x had this)
+- **Coot Python script translator**: convert common Coot `.py` scripts to
+  Moorhen JS equivalents (similar shape to the PyMOL translator above, but
+  Coot scripts use the `coot.` and `coot_redraw` style which is closer to the
+  Moorhen JS API to begin with)
+- **Clashes as a 4th category in the `n` cycler**: add Embind value-object
+  registration for `coot::plain_atom_overlap_t` + `coot::atom_spec_t`, then
+  expose `get_atom_overlaps` and merge with rama/rotamer/density-fit
+- **Real bond list binding**: replace the planned distance-based covalent-bond
+  approximation (used by both the PyMOL `bound_to`/`extend` operators and any
+  future bond-graph-using features) with a libcoot binding
+- **Validation report panel**: unified view of Ramachandran + rotamer +
+  clashes + density fit
 - **Real-space refine all** keyboard shortcut
 - **Recent files list** in File menu
+- **64-bit WASM build for this fork**: currently we only build 32-bit and the
+  Electron wrapper forces it; building 64-bit would let the browser path use
+  more memory for large complexes
 
 ---
 
