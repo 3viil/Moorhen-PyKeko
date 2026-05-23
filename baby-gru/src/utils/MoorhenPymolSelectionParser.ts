@@ -109,11 +109,8 @@ const tokenize = (src: string): Token[] => {
             i = j + 1;
             continue;
         }
-        if (c === "+" && i + 1 < src.length && /\d/.test(src[i + 1])) {
-            // unary + (in numlist contexts) — fold into number
-            i++;
-            continue;
-        }
+        // (PyMOL uses `+` as a list separator: `chain A+B+C`, `resi 5+10`.
+        //  We don't fold it into a number.)
         // Digit-led identifier (PDB ids like 1crn)? Check before number.
         const identLen = isDigitLedIdent(src, i);
         if (identLen > 0) {

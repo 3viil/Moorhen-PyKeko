@@ -169,7 +169,14 @@ const scopeOf = (node: SelNode, env: any, registry: PymolRegistry): MoorhenMolec
     const scopedMolNos = new Set<number>();
     for (const name of objectNames) {
         const r = registry.resolve(name);
-        if (r && r.kind === "object") scopedMolNos.add(r.molNo);
+        if (r && r.kind === "object") {
+            scopedMolNos.add(r.molNo);
+        } else {
+            // Registry miss — fall back to matching by molecule.name (handles
+            // cross-script-run cases where this script didn't fetch the object).
+            const byName = allMols.find(m => m.name === name);
+            if (byName) scopedMolNos.add(byName.molNo);
+        }
     }
     return scopedMolNos.size === 0 ? allMols : allMols.filter(m => scopedMolNos.has(m.molNo));
 };
@@ -350,6 +357,14 @@ const cmdFetch = async (cmd: PymolCommand, env: any, registry: PymolRegistry, sc
         console.warn(`[pymol:${cmd.lineNo}] fetch requires a PDB id`);
         return;
     }
+    // PyMOL's fetch replaces an existing object of the same name. Drop any
+    // stale molecule with this id from the live state before adding the new one.
+    const existing = (env.store.getState().molecules.moleculeList as MoorhenMolecule[])
+        .filter(m => m && m.name === pdbId);
+    for (const old of existing) {
+        try { await old.delete(); } catch {}
+        env.dispatch(env.removeMolecule(old));
+    }
     const res = await fetch(`https://files.rcsb.org/download/${pdbId}.pdb`);
     if (!res.ok) {
         console.warn(`[pymol:${cmd.lineNo}] fetch ${pdbId} failed: HTTP ${res.status}`);
@@ -362,45 +377,81 @@ const cmdFetch = async (cmd: PymolCommand, env: any, registry: PymolRegistry, sc
     await mol.loadToCootFromString(coords, pdbId);
     await mol.fetchIfDirtyAndDraw("CBs");
     env.dispatch(env.addMolecule(mol));
+    env.dispatch(env.showMolecule(mol));
     registry.register(pdbId, { kind: "object", molNo: mol.molNo });
 };
 
 const cmdDelete = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const target = cmd.args[0]?.trim();
     if (!target || target === "all") {
-        const mols = env.store.getState().molecules.moleculeList as MoorhenMolecule[];
-        for (const m of mols) await m.delete();
+        const mols = [...(env.store.getState().molecules.moleculeList as MoorhenMolecule[])];
+        for (const m of mols) {
+            try { await m.delete(); } catch {}
+            env.dispatch(env.removeMolecule(m));
+        }
         registry.entries.clear();
+        env.dispatch(env.setRequestDrawScene(true));
         return;
     }
+    let mol: MoorhenMolecule | undefined;
     const resolved = registry.resolve(target);
-    if (!resolved || resolved.kind !== "object") {
+    if (resolved && resolved.kind === "object") {
+        mol = (env.store.getState().molecules.moleculeList as MoorhenMolecule[])
+            .find(m => m.molNo === resolved.molNo);
+    } else {
+        mol = (env.store.getState().molecules.moleculeList as MoorhenMolecule[])
+            .find(m => m.name === target);
+    }
+    if (!mol) {
         console.warn(`[pymol:${cmd.lineNo}] delete: unknown object "${target}"`);
         return;
     }
-    const mol = (env.store.getState().molecules.moleculeList as MoorhenMolecule[])
-        .find(m => m.molNo === resolved.molNo);
-    if (mol) await mol.delete();
+    try { await mol.delete(); } catch {}
+    env.dispatch(env.removeMolecule(mol));
     registry.unregister(target);
+    env.dispatch(env.setRequestDrawScene(true));
 };
 
 const cmdToggleVisibility = (show: boolean) =>
     async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
         const target = cmd.args[0]?.trim();
         const action = show ? env.showMolecule : env.hideMolecule;
+
+        const applyTo = async (mol: MoorhenMolecule) => {
+            env.dispatch(action(mol));
+            // Redux flag alone doesn't reach the WebGL renderer; iterate the
+            // representations so the cartoons/bonds actually hide or reappear.
+            for (const r of (mol.representations as moorhen.MoleculeRepresentation[])) {
+                try {
+                    if (show) await r.show();
+                    else r.hide();
+                } catch (e) { /* skip stale rep */ }
+            }
+            env.dispatch(env.setRequestDrawScene(true));
+        };
+
         if (!target || target === "all") {
-            const mols = env.store.getState().molecules.moleculeList as MoorhenMolecule[];
-            for (const m of mols) env.dispatch(action(m));
+            const mols = (env.store.getState().molecules.moleculeList as MoorhenMolecule[]).filter(isLiveMolecule);
+            for (const m of mols) await applyTo(m);
             return;
         }
+        // Try the registry first (target was loaded in THIS script run); otherwise
+        // fall back to matching by molecule.name in Redux. The registry is per-run,
+        // so a separate `disable 1crn` after a `fetch 1crn` needs this fallback.
+        let mol: MoorhenMolecule | undefined;
         const resolved = registry.resolve(target);
-        if (!resolved || resolved.kind !== "object") {
+        if (resolved && resolved.kind === "object") {
+            mol = (env.store.getState().molecules.moleculeList as MoorhenMolecule[])
+                .find(m => m.molNo === resolved.molNo);
+        } else {
+            mol = (env.store.getState().molecules.moleculeList as MoorhenMolecule[])
+                .find(m => m.name === target);
+        }
+        if (!mol || !isLiveMolecule(mol)) {
             console.warn(`[pymol:${cmd.lineNo}] ${show ? "enable" : "disable"}: unknown object "${target}"`);
             return;
         }
-        const mol = (env.store.getState().molecules.moleculeList as MoorhenMolecule[])
-            .find(m => m.molNo === resolved.molNo);
-        if (mol) env.dispatch(action(mol));
+        await applyTo(mol);
     };
 
 const cmdZoom = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
