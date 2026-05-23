@@ -1,7 +1,7 @@
 import type { Store } from "@reduxjs/toolkit";
 import { moorhen } from "../types/moorhen"
 import { webGL } from "../types/mgWebGL";
-import { addMolecule } from "../store/moleculesSlice";
+import { addMolecule, showMolecule, hideMolecule } from "../store/moleculesSlice";
 import { addMap } from "../store/mapsSlice";
 import { setOrigin, setZoom, setQuat, setRequestDrawScene, setLightPosition, setAmbient, setSpecular, setDiffuse, setSpecularPower, setFogClipOffset, setFogStart, setFogEnd, setClipStart, setClipEnd, setActiveMolecule, setDraggableMolecule, setDisplayBuffers} from "../store/glRefSlice"
 import { addTextOverlay, addSvgPathOverlay, addFracPathOverlay, emptyOverlays} from "../store/overlaysSlice"
@@ -119,7 +119,9 @@ export class MoorhenScriptApi  {
             MoorhenMoleculeRepresentation: MoleculeRepresentation,
             dispatch: (arg) => this.store.dispatch( arg ),
             addMolecule: addMolecule,
-            addMap: addMap, 
+            showMolecule: showMolecule,
+            hideMolecule: hideMolecule,
+            addMap: addMap,
             run_command: this.runCommand,
             rigid_body_fit: this.doRigidBodyFit,
             generate_self_restraints: this.doGenerateSelfRestraints,

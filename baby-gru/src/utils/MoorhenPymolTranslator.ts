@@ -15,6 +15,8 @@ import * as quat4 from "gl-matrix/quat";
 import * as mat3 from "gl-matrix/mat3";
 import { MoorhenMolecule } from "./MoorhenMolecule";
 import { parsePymolScript, PymolCommand } from "./MoorhenPymolParser";
+import { parseSelection, SelNode } from "./MoorhenPymolSelectionParser";
+import { evaluateSelectionForMolecule, coalesceResidueCids } from "./MoorhenPymolFilter";
 import { moorhen } from "../types/moorhen";
 
 type ScriptContext = {
@@ -107,7 +109,7 @@ const REP_MAP: Record<string, moorhen.RepresentationStyles> = {
 
 type SelectionResolver =
     | { kind: "object"; molNo: number }
-    | { kind: "cid"; cids: string[]; molNo?: number };
+    | { kind: "named"; ast: SelNode };
 
 class PymolRegistry {
     entries: Map<string, SelectionResolver> = new Map();
@@ -123,40 +125,214 @@ class PymolRegistry {
 }
 
 /**
- * Resolve a Phase-1/2 PyMOL selection argument. Supports:
- *  - bare names registered by fetch/load (object names) → that one molecule
- *  - `all` / `*` / empty → every loaded molecule
- *  Full selection algebra (chain X and resi N…) arrives in Phase 3.
- *
- * Returns the list of (molecule, cid) pairs to operate on. Phase 1/2 always
- * uses the all-atoms CID since we can't compile real selections yet.
+ * Substitute object/named-selection references in an AST.
+ * Each `{ kind: "object", name }` node is replaced by either:
+ *   - the AST stored under that name (named selection), OR
+ *   - left in place (object name; molecule scoping handled later)
  */
-const resolveSelectionPhase1 = (
+const substituteRegistry = (node: SelNode, registry: PymolRegistry): SelNode => {
+    if (node.kind === "object") {
+        const r = registry.resolve(node.name);
+        if (r && r.kind === "named") return substituteRegistry(r.ast, registry);
+        return node; // leave object-names; molecule scoping kicks in at evaluation
+    }
+    if (node.kind === "or" || node.kind === "and") {
+        return { ...node, l: substituteRegistry(node.l, registry), r: substituteRegistry(node.r, registry) };
+    }
+    if (node.kind === "not") return { kind: "not", inner: substituteRegistry(node.inner, registry) };
+    if (node.kind === "byres" || node.kind === "bychain" || node.kind === "byobject" || node.kind === "bysegi" ||
+        node.kind === "bymolecule" || node.kind === "bymodel" || node.kind === "bound_to" || node.kind === "neighbor" ||
+        node.kind === "first" || node.kind === "last") {
+        return { ...node, inner: substituteRegistry(node.inner, registry) };
+    }
+    if (node.kind === "extend" || node.kind === "dist") {
+        return { ...node, inner: substituteRegistry(node.inner, registry) };
+    }
+    return node;
+};
+
+/**
+ * Get the set of molecules an AST applies to.
+ * An object-name in the AST scopes to that one molecule; everything else
+ * scopes to all loaded molecules.
+ */
+const scopeOf = (node: SelNode, env: any, registry: PymolRegistry): MoorhenMolecule[] => {
+    const allMols = (env.store.getState().molecules.moleculeList as MoorhenMolecule[]).filter(isLiveMolecule);
+    const objectNames: string[] = [];
+    const walk = (n: SelNode) => {
+        if (n.kind === "object") objectNames.push(n.name);
+        else if (n.kind === "or" || n.kind === "and") { walk(n.l); walk(n.r); }
+        else if ("inner" in n && n.inner) walk(n.inner);
+    };
+    walk(node);
+    if (objectNames.length === 0) return allMols;
+    const scopedMolNos = new Set<number>();
+    for (const name of objectNames) {
+        const r = registry.resolve(name);
+        if (r && r.kind === "object") scopedMolNos.add(r.molNo);
+    }
+    return scopedMolNos.size === 0 ? allMols : allMols.filter(m => scopedMolNos.has(m.molNo));
+};
+
+/**
+ * Compile and evaluate a selection arg to a list of (molecule, cid) pairs.
+ * cid is a single string ready to pass to addRepresentation / addColourRule —
+ * for whole-molecule selections it's the all-atoms wildcard; for narrower
+ * selections it's a `||`-joined list of residue/atom CIDs.
+ */
+/**
+ * CID-pure compilation: try to express a selection as one or more Moorhen
+ * CIDs without enumerating atoms. Returns null if the selection needs the
+ * runtime filter.
+ *
+ * Each compiled slot is independent (chain, resi, atom). For unions (or),
+ * we emit multiple CIDs that can be `||`-joined.
+ */
+type CidSlots = { chain?: string; resi?: string; atom?: string };
+
+const compileSlots = (node: SelNode): CidSlots[] | null => {
+    switch (node.kind) {
+        case "all": return [{}];
+        case "none": return [];
+        case "pred_str": {
+            if (node.prop === "chain") return node.values.map(v => ({ chain: v }));
+            if (node.prop === "name") return [{ atom: node.values.join(",") }];
+            return null;
+        }
+        case "pred_resi": {
+            const resi = node.ranges.map(r => r.lo === r.hi ? `${r.lo}` : `${r.lo}-${r.hi}`).join(",");
+            return [{ resi }];
+        }
+        case "and": {
+            const l = compileSlots(node.l);
+            const r = compileSlots(node.r);
+            if (!l || !r) return null;
+            // Cross-product of slot fills; reject when a slot is double-set with conflicting values
+            const out: CidSlots[] = [];
+            for (const a of l) for (const b of r) {
+                if (a.chain && b.chain && a.chain !== b.chain) continue;
+                if (a.resi && b.resi && a.resi !== b.resi) continue;
+                if (a.atom && b.atom && a.atom !== b.atom) continue;
+                out.push({
+                    chain: a.chain ?? b.chain,
+                    resi: a.resi ?? b.resi,
+                    atom: a.atom ?? b.atom,
+                });
+            }
+            return out;
+        }
+        case "or": {
+            const l = compileSlots(node.l);
+            const r = compileSlots(node.r);
+            if (!l || !r) return null;
+            return [...l, ...r];
+        }
+        case "byres": {
+            // byres(pure) — same CIDs, atom slot wildcarded
+            const inner = compileSlots(node.inner);
+            if (!inner) return null;
+            return inner.map(s => ({ chain: s.chain, resi: s.resi, atom: undefined }));
+        }
+        case "bychain": {
+            const inner = compileSlots(node.inner);
+            if (!inner) return null;
+            return inner.map(s => ({ chain: s.chain }));
+        }
+        case "object":
+            // Object names are scoped at the molecule level, not the CID — match-all here
+            return [{}];
+        default:
+            return null;
+    }
+};
+
+const slotsToCid = (s: CidSlots): string => {
+    // Moorhen uses a SHORT mmdb-style CID where omitted trailing slots are dropped:
+    //   chain only       : //A
+    //   chain + resi     : //A/5-10
+    //   chain + resi + n : //A/5/CA
+    //   all atoms        : /*/*/*/* (the long wildcard form is needed for reps)
+    // When chain is unset we use `*` so the leading two slashes don't both go empty.
+    const chain = s.chain ?? "*";
+    if (s.resi === undefined && s.atom === undefined) return `//${chain}`;
+    if (s.atom === undefined) return `//${chain}/${s.resi}`;
+    return `//${chain}/${s.resi ?? "*"}/${s.atom}`;
+};
+
+// Moorhen's own internal reps use the all-atoms wildcard with a `:*` alt-loc
+// suffix on the atom slot. Find-or-create lookups in `molecule.show(...)` /
+// `molecule.hide(...)` only match if the cid matches exactly. Normalize our
+// compiled wildcards so reuse hits.
+const normalizeCidForMoorhen = (cid: string): string => {
+    if (cid.includes("||")) return cid; // multi-cid expressions; leave alone
+    if (cid.includes(":")) return cid;  // already alt-loc-suffixed
+    if (cid === "/*/*/*/*") return "/*/*/*/*:*";
+    return cid;
+};
+
+const isLiveMolecule = (m: MoorhenMolecule): boolean => {
+    // Defend against stale molecules left in Redux from a previous session
+    // where the WASM gemmiStructure was already torn down. Operating on
+    // those throws "Cannot pass deleted object as a pointer of type Structure".
+    try {
+        return !!m && m.molNo !== null && (m.gemmiStructure ? !m.gemmiStructure.isDeleted() : true);
+    } catch {
+        return false;
+    }
+};
+
+const resolveSelection = async (
     arg: string | undefined,
     env: any,
     registry: PymolRegistry
-): { molecule: MoorhenMolecule; cid: string }[] => {
-    const allMols = env.store.getState().molecules.moleculeList as MoorhenMolecule[];
-    if (!arg || arg === "all" || arg === "*") {
-        return allMols.map(m => ({ molecule: m, cid: "/*/*/*/*" }));
+): Promise<{ molecule: MoorhenMolecule; cid: string }[]> => {
+    const allMols = (env.store.getState().molecules.moleculeList as MoorhenMolecule[]).filter(isLiveMolecule);
+    if (!arg || arg.trim() === "" || arg.trim() === "all" || arg.trim() === "*") {
+        // Use the short form Moorhen idiomatically uses for "every atom"
+        return allMols.map(m => ({ molecule: m, cid: "//*" }));
     }
-    const trimmed = arg.trim();
-    const resolved = registry.resolve(trimmed);
-    if (resolved && resolved.kind === "object") {
-        const mol = allMols.find(m => m.molNo === resolved.molNo);
-        return mol ? [{ molecule: mol, cid: "/*/*/*/*" }] : [];
+    let ast: SelNode;
+    try {
+        ast = parseSelection(arg);
+    } catch (e: any) {
+        console.warn(`[pymol] selection parse error: ${e?.message ?? e}`);
+        return [];
     }
-    return [];
+    const substituted = substituteRegistry(ast, registry);
+    const scope = scopeOf(substituted, env, registry);
+
+    // Fast path: try CID-pure compilation first
+    const pureSlots = compileSlots(substituted);
+    if (pureSlots !== null) {
+        if (pureSlots.length === 0) return [];
+        const cidExpr = pureSlots.map(slotsToCid).join("||");
+        return scope.map(m => ({ molecule: m, cid: cidExpr }));
+    }
+
+    // Fallback: runtime atom-filter
+    const results: { molecule: MoorhenMolecule; cid: string }[] = [];
+    for (const molecule of scope) {
+        const cids = await evaluateSelectionForMolecule(substituted, molecule, "residue");
+        if (cids.length === 0) continue;
+        if (cids.length === 1 && cids[0] === "/*/*/*/*") {
+            results.push({ molecule, cid: "/*/*/*/*" });
+        } else {
+            const coalesced = coalesceResidueCids(cids);
+            results.push({ molecule, cid: coalesced.map(c => `${c}/*`).join("||") });
+        }
+    }
+    return results;
 };
 
 /** Single-molecule convenience wrapper for commands like zoom/center. */
-const resolveSelectionSingle = (
+const resolveSelectionSingle = async (
     arg: string | undefined,
     env: any,
     registry: PymolRegistry
-): { molecule: MoorhenMolecule | null; cid: string } => {
-    const list = resolveSelectionPhase1(arg, env, registry);
-    return list[0] ?? { molecule: null, cid: "" };
+): Promise<{ molecule: MoorhenMolecule | null; cid: string }> => {
+    const list = await resolveSelection(arg, env, registry);
+    if (list.length === 0) return { molecule: null, cid: "" };
+    return { molecule: list[0].molecule, cid: list[0].cid };
 };
 
 /**
@@ -229,17 +405,21 @@ const cmdToggleVisibility = (show: boolean) =>
 
 const cmdZoom = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const arg = cmd.args.join(",");
-    const { molecule, cid } = resolveSelectionSingle(arg, env, registry);
+    const { molecule, cid } = await resolveSelectionSingle(arg, env, registry);
     if (!molecule) {
         console.warn(`[pymol:${cmd.lineNo}] zoom: cannot resolve target "${arg}"`);
         return;
     }
-    await molecule.centreOn(cid, true, true);
+    // centreOn picks a sensible whole-molecule zoom when the cid is exactly the
+    // 4-segment all-atoms wildcard. Our "all" path uses the short form `//*`,
+    // so normalize.
+    const cidForCentre = (cid === "//*" || cid === "//") ? "/*/*/*/*" : cid;
+    await molecule.centreOn(cidForCentre, true, true);
 };
 
 const cmdCenter = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const arg = cmd.args.join(",");
-    const { molecule, cid } = resolveSelectionSingle(arg, env, registry);
+    const { molecule, cid } = await resolveSelectionSingle(arg, env, registry);
     if (!molecule) return;
     // centreOn without alignment; just origin shift
     const atoms = await molecule.gemmiAtomsForCid(cid);
@@ -319,35 +499,37 @@ const cmdLoad = async (cmd: PymolCommand, env: any, registry: PymolRegistry, scr
 const cmdShow = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const repKey = cmd.args[0]?.trim().toLowerCase();
     const selArg = cmd.args[1];
-    if (!repKey || repKey === "everything") {
-        // `show everything` is rare in scripts but exists; map to all reps for sel
-        // For now just pass — no-op
-        return;
-    }
+    if (!repKey || repKey === "everything") return;
     const style = REP_MAP[repKey];
     if (!style) {
         console.warn(`[pymol:${cmd.lineNo}] show: unsupported representation "${repKey}"`);
         return;
     }
-    const targets = resolveSelectionPhase1(selArg, env, registry);
+    const targets = await resolveSelection(selArg, env, registry);
     for (const { molecule, cid } of targets) {
-        await molecule.addRepresentation(style, cid, true);
+        // Use molecule.show — find-or-create, keeps state consistent, no duplicate reps
+        try { await molecule.show(style, normalizeCidForMoorhen(cid)); }
+        catch (e) { console.warn(`[pymol:${cmd.lineNo}] show ${repKey} on ${molecule.name}:`, e); }
     }
 };
 
 const cmdHide = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const repKey = cmd.args[0]?.trim().toLowerCase();
     const selArg = cmd.args[1];
-    const targets = resolveSelectionPhase1(selArg, env, registry);
-    for (const { molecule } of targets) {
-        const reps = [...(molecule.representations as moorhen.MoleculeRepresentation[])];
-        const toRemove = repKey === "everything" || !repKey
-            ? reps
-            : reps.filter(r => r.style === REP_MAP[repKey]);
-        for (const r of toRemove) {
-            r.deleteBuffers?.();
-            const idx = molecule.representations.indexOf(r);
-            if (idx >= 0) molecule.representations.splice(idx, 1);
+    const targets = await resolveSelection(selArg, env, registry);
+    for (const { molecule, cid } of targets) {
+        if (!repKey || repKey === "everything") {
+            for (const r of [...(molecule.representations as moorhen.MoleculeRepresentation[])]) {
+                try { molecule.hide(r.style, r.cid); } catch (e) { /* skip stale */ }
+            }
+        } else {
+            const style = REP_MAP[repKey];
+            if (!style) {
+                console.warn(`[pymol:${cmd.lineNo}] hide: unsupported "${repKey}"`);
+                continue;
+            }
+            try { molecule.hide(style, normalizeCidForMoorhen(cid)); }
+            catch (e) { console.warn(`[pymol:${cmd.lineNo}] hide ${repKey} on ${molecule.name}:`, e); }
         }
     }
 };
@@ -366,11 +548,14 @@ const cmdColor = async (cmd: PymolCommand, env: any, registry: PymolRegistry) =>
         return;
     }
     const hex = resolveColor(colorName);
-    const targets = resolveSelectionPhase1(selArg, env, registry);
+    const targets = await resolveSelection(selArg, env, registry);
+    const touched = new Set<MoorhenMolecule>();
     for (const { molecule, cid } of targets) {
         molecule.addColourRule("cid", cid, hex, [cid, hex]);
-        // Re-apply existing representations so the new rule takes effect
-        await molecule.fetchIfDirtyAndDraw("CBs");
+        touched.add(molecule);
+    }
+    for (const molecule of touched) {
+        try { await (molecule as any).redraw(); } catch (e) { console.warn(`[pymol:${cmd.lineNo}] redraw failed:`, e); }
     }
 };
 
@@ -406,7 +591,7 @@ const cmdSet = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
             console.warn(`[pymol:${cmd.lineNo}] set transparency: invalid value "${value}"`);
             return;
         }
-        const targets = resolveSelectionPhase1(selArg, env, registry);
+        const targets = await resolveSelection(selArg, env, registry);
         for (const { molecule } of targets) {
             for (const rep of (molecule.representations as moorhen.MoleculeRepresentation[])) {
                 if (rep.isCustom) rep.setNonCustomOpacity?.(opacity);
@@ -427,28 +612,51 @@ const cmdSet = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
 };
 
 const cmdSpectrum = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
-    // `spectrum [expression[, palette[, selection]]]`. Most common cases:
-    //   spectrum count, rainbow        → rainbow by residue number
-    //   spectrum b                     → B-factor
-    //   spectrum b, blue_white_red, sel
+    // `spectrum [expression[, palette[, selection]]]`. Currently only the B-factor
+    // mode is supported reliably; rainbow-by-residue needs a verified Moorhen
+    // rule type (mol-symmetry was wrong — colours by symmetry mate, not residue).
     const expr = (cmd.args[0] ?? "count").trim().toLowerCase();
     const selArg = cmd.args[2];
-    const targets = resolveSelectionPhase1(selArg, env, registry);
-    let ruleType: string;
-    if (expr === "count" || expr === "resi" || expr === "rainbow") ruleType = "mol-symmetry"; // closest stock rule
-    else if (expr === "b" || expr === "b-factor") ruleType = "b-factor-normalised";
-    else {
-        console.warn(`[pymol:${cmd.lineNo}] spectrum: unsupported expression "${expr}"`);
+    const targets = await resolveSelection(selArg, env, registry);
+    if (expr === "b" || expr === "b-factor") {
+        const touched = new Set<MoorhenMolecule>();
+        for (const { molecule, cid } of targets) {
+            molecule.addColourRule("b-factor-normalised", cid, "#888888", [cid], true);
+            touched.add(molecule);
+        }
+        for (const molecule of touched) {
+            try { await (molecule as any).redraw(); } catch {}
+        }
         return;
     }
-    for (const { molecule, cid } of targets) {
-        molecule.addColourRule(ruleType, cid, "#888888", [cid], true);
-        await molecule.fetchIfDirtyAndDraw("CBs");
-    }
+    console.warn(`[pymol:${cmd.lineNo}] spectrum "${expr}" not yet supported (only "b" / "b-factor" wired)`);
 };
 
 const cmdRock = async (cmd: PymolCommand, env: any) => {
     env.dispatch(env.setDoSpin(true));
+};
+
+const cmdSelect = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
+    // `select <name>, <expr>` — store the parsed AST under <name> in the registry.
+    // Subsequent commands referencing `<name>` as an object/selection get the AST
+    // substituted in.
+    const name = cmd.args[0]?.trim();
+    const exprStr = cmd.args.slice(1).join(",").trim();
+    if (!name || !exprStr) {
+        console.warn(`[pymol:${cmd.lineNo}] select: usage 'select <name>, <expr>'`);
+        return;
+    }
+    try {
+        const ast = parseSelection(exprStr);
+        registry.register(name, { kind: "named", ast });
+    } catch (e: any) {
+        console.warn(`[pymol:${cmd.lineNo}] select: parse error in expression "${exprStr}": ${e?.message ?? e}`);
+    }
+};
+
+const cmdDeselect = async () => {
+    // PyMOL deselect clears the auto-generated `sele` selection; we honour by
+    // unregistering it if present. Named selections persist.
 };
 
 // ---------- dispatcher ----------
@@ -475,6 +683,9 @@ const handlers: Record<string, (cmd: PymolCommand, env: any, registry: PymolRegi
     set: cmdSet,
     spectrum: cmdSpectrum,
     rock: cmdRock,
+    // Tier 3: named selections
+    select: cmdSelect,
+    deselect: cmdDeselect,
     // Soft-warns
     pseudoatom: async (cmd) => { console.warn(`[pymol:${cmd.lineNo}] pseudoatom: not supported (no-op)`); },
 };

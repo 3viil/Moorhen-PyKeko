@@ -9,6 +9,7 @@
 // dispatch setRequestDrawScene to force MoorhenWebMG to repaint the WebGL canvas.
 import { MoorhenMolecule } from "../utils/MoorhenMolecule";
 import { MoorhenMap } from "../utils/MoorhenMap";
+import { MoorhenScriptApi } from "../utils/MoorhenScriptAPI";
 import { addMolecule } from "../store/moleculesSlice";
 import { addMap } from "../store/mapsSlice";
 import { setActiveMap } from "../store/generalStatesSlice";
@@ -212,6 +213,22 @@ export function createControlApi(ctx: Ctx) {
       const res = await commandCentre.current.cootCommand(
         { returnType, command, commandArgs, changesMolecules: mol ? [mol.molNo] : [] }, true);
       return { command, result: res?.data?.result?.result ?? null };
+    },
+
+    // Run a PyMOL or JS script through MoorhenScriptApi. Exposed primarily so
+    // an autonomous CDP-based test loop can iterate on the translator without
+    // poking the modal.
+    async runPymol(script: string) {
+      const api = new MoorhenScriptApi(commandCentre, store);
+      await api.exePymol(script);
+      repaint();
+      return { ok: true };
+    },
+    async runJs(script: string) {
+      const api = new MoorhenScriptApi(commandCentre, store);
+      api.exe(script);
+      repaint();
+      return { ok: true };
     },
   };
 
