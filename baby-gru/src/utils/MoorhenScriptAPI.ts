@@ -18,6 +18,7 @@ import { MoleculeRepresentation } from "./MoorhenMoleculeRepresentation";
 import { ColourRule } from "./MoorhenColourRule";
 import { MoorhenMap } from "./MoorhenMap";
 import { MoorhenMolecule } from "./MoorhenMolecule";
+import { executePymolScript } from "./MoorhenPymolTranslator";
 
 export class MoorhenScriptApi  {
 
@@ -27,11 +28,11 @@ export class MoorhenScriptApi  {
     glRef: React.RefObject<webGL.MGWebGL>;
     store: Store;
 
-    constructor(commandCentre: React.RefObject<moorhen.CommandCentre> = null, store:Store = null, molecules: moorhen.Molecule[] = null, maps: moorhen.Map[] = null) {
-        this.store = store ? store : store;
-        this.commandCentre = commandCentre
-        this.molecules = molecules ? molecules : store.getState().molecules.moleculeList;
-        this.maps = maps ? maps : store.getState().maps;
+    constructor(commandCentre: React.RefObject<moorhen.CommandCentre> = null, store: Store = null, molecules: moorhen.Molecule[] = null, maps: moorhen.Map[] = null) {
+        this.store = store;
+        this.commandCentre = commandCentre;
+        this.molecules = molecules ?? (store ? store.getState().molecules.moleculeList : []);
+        this.maps = maps ?? (store ? store.getState().maps : []);
     }
 
     doRigidBodyFit = async (molNo: number, cidsString: string, mapNo: number) => {
@@ -95,8 +96,12 @@ export class MoorhenScriptApi  {
           }))
     }
 
-    exe(src: string) {
-        // This env defines the variables accesible within the user-defined code
+    /**
+     * Build the env object exposed inside user scripts. Shared between the
+     * JS-mode `exe()` and the PyMOL translator so both modes see the same
+     * molecules / maps / dispatch / action-creator surface.
+     */
+    buildEnv(): Record<string, any> {
         const env = {
             molecules: this.molecules.reduce((obj, molecule) => {
                 obj[molecule.molNo] = molecule
@@ -179,9 +184,29 @@ export class MoorhenScriptApi  {
             setUseRamaRefinementRestraints: setUseRamaRefinementRestraints,
             setuseTorsionRefinementRestraints: setuseTorsionRefinementRestraints,
             setRefinementSelection: setRefinementSelection,
-            resetRefinementSettings: resetRefinementSettings
+            resetRefinementSettings: resetRefinementSettings,
+            store: this.store,
         };
+        return env;
+    }
 
-        (new Function("with(this) { " + src + "}")).call(env)
+    /**
+     * Execute a JavaScript script string against the Moorhen env.
+     * The env is exposed via a `with()` block so users can write
+     * `setOrigin([0,0,0])` instead of `env.setOrigin(...)`.
+     */
+    exe(src: string) {
+        const env = this.buildEnv();
+        (new Function("with(this) { " + src + "}")).call(env);
+    }
+
+    /**
+     * Execute a PyMOL script string. Parses line-by-line and dispatches
+     * each command to the translator. Errors per line are surfaced as
+     * console warnings; the rest of the script continues.
+     */
+    async exePymol(src: string): Promise<void> {
+        const env = this.buildEnv();
+        await executePymolScript(src, env, { commandCentre: this.commandCentre });
     }
 }
