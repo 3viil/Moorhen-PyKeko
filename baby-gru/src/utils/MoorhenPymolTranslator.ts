@@ -710,6 +710,67 @@ const cmdDeselect = async () => {
     // unregistering it if present. Named selections persist.
 };
 
+// ---------- Tier 4: measurements + screenshots ----------
+
+const cmdDistance = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
+    // `distance [name,] sel1, sel2` — compute centroid-to-centroid distance.
+    // PyMOL renders a labelled dashed line; we currently just log the value
+    // (visual annotation via Moorhen's measurement system is mouse-driven and
+    // would need a separate hook).
+    let name: string | undefined;
+    let sel1Arg: string | undefined;
+    let sel2Arg: string | undefined;
+    if (cmd.args.length === 2) {
+        [sel1Arg, sel2Arg] = cmd.args;
+    } else if (cmd.args.length >= 3) {
+        [name, sel1Arg, sel2Arg] = cmd.args;
+    } else {
+        console.warn(`[pymol:${cmd.lineNo}] distance: usage 'distance [name,] sel1, sel2'`);
+        return;
+    }
+
+    const centroidOf = async (selArg: string): Promise<[number, number, number] | null> => {
+        const targets = await resolveSelection(selArg, env, registry);
+        if (targets.length === 0) return null;
+        let sx = 0, sy = 0, sz = 0, n = 0;
+        for (const { molecule, cid } of targets) {
+            const atoms = await molecule.gemmiAtomsForCid(cid);
+            for (const a of atoms) { sx += a.x; sy += a.y; sz += a.z; n++; }
+        }
+        return n > 0 ? [sx / n, sy / n, sz / n] : null;
+    };
+
+    const a = await centroidOf(sel1Arg!);
+    const b = await centroidOf(sel2Arg!);
+    if (!a || !b) {
+        console.warn(`[pymol:${cmd.lineNo}] distance: empty selection`);
+        return;
+    }
+    const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+    const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+    const label = name ? `${name}: ` : "";
+    console.log(`[pymol:${cmd.lineNo}] distance ${label}${d.toFixed(2)} Å`);
+};
+
+const cmdPng = async (cmd: PymolCommand, env: any) => {
+    let filename = cmd.args[0]?.replace(/['"]/g, "").trim() ?? "moorhen_screenshot.png";
+    if (!filename.toLowerCase().endsWith(".png")) filename += ".png";
+    const rec = env.videoRecorderRef?.current;
+    if (!rec) {
+        console.warn(`[pymol:${cmd.lineNo}] png: screen-recorder not ready (open Moorhen via the UI first)`);
+        return;
+    }
+    try { await rec.takeScreenShot(filename, false); }
+    catch (e) { console.warn(`[pymol:${cmd.lineNo}] png failed:`, e); }
+};
+
+const cmdRay = async (cmd: PymolCommand, env: any) => {
+    // PyMOL `ray <w>, <h>` does software ray-tracing. Moorhen has no offline
+    // renderer; we fall back to the same canvas capture as png, and warn.
+    console.warn(`[pymol:${cmd.lineNo}] ray: Moorhen has no ray-tracer; falling back to a rasterized screenshot`);
+    await cmdPng({ ...cmd, args: cmd.args.slice(2) }, env);
+};
+
 // ---------- dispatcher ----------
 
 const handlers: Record<string, (cmd: PymolCommand, env: any, registry: PymolRegistry, scriptApi: ScriptContext) => Promise<void>> = {
@@ -737,6 +798,11 @@ const handlers: Record<string, (cmd: PymolCommand, env: any, registry: PymolRegi
     // Tier 3: named selections
     select: cmdSelect,
     deselect: cmdDeselect,
+    // Tier 4: measurements + screenshots
+    distance: cmdDistance,
+    dist: cmdDistance,
+    png: cmdPng,
+    ray: cmdRay,
     // Soft-warns
     pseudoatom: async (cmd) => { console.warn(`[pymol:${cmd.lineNo}] pseudoatom: not supported (no-op)`); },
 };

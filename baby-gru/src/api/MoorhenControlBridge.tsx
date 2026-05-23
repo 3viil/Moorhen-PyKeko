@@ -6,6 +6,7 @@
 import { useEffect } from "react";
 import { useStore, useDispatch } from "react-redux";
 import { useCommandCentre, usePaths } from "../InstanceManager/hooks";
+import { useMoorhenInstance } from "../InstanceManager/useMoorhenInstance";
 import { createControlApi } from "./MoorhenControlApi";
 
 export const MoorhenControlBridge = () => {
@@ -13,6 +14,7 @@ export const MoorhenControlBridge = () => {
   const store = useStore();
   const dispatch = useDispatch();
   const paths = usePaths();
+  const instance = useMoorhenInstance();
 
   useEffect(() => {
     const api = createControlApi({
@@ -20,6 +22,7 @@ export const MoorhenControlBridge = () => {
       store,
       dispatch,
       monomerLibraryPath: paths?.monomerLibraryPath || "./monomers",
+      videoRecorderRef: instance?.getVideoRecorderRef?.() ?? null,
     });
     (window as any).MoorhenControlApi = api;
 

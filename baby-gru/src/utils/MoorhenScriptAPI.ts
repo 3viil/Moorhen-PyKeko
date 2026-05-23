@@ -210,6 +210,9 @@ export class MoorhenScriptApi  {
      */
     async exePymol(src: string): Promise<void> {
         const env = this.buildEnv();
+        // Forward optional videoRecorderRef (set by MoorhenControlApi.runPymol)
+        // so screenshot commands (png/ray) can grab the existing screen-capture pipeline.
+        (env as any).videoRecorderRef = (this as any).videoRecorderRef ?? null;
         await executePymolScript(src, env, { commandCentre: this.commandCentre });
     }
 }

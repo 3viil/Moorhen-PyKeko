@@ -16,7 +16,7 @@ import { setActiveMap } from "../store/generalStatesSlice";
 import { triggerUpdate } from "../store/moleculeMapUpdateSlice";
 import { setRequestDrawScene } from "../store/glRefSlice";
 
-type Ctx = { commandCentre: any; store: any; dispatch: any; monomerLibraryPath: string };
+type Ctx = { commandCentre: any; store: any; dispatch: any; monomerLibraryPath: string; videoRecorderRef?: any };
 
 const DEFAULT_MTZ_COLUMNS = {
   F: "FWT", PHI: "PHWT", Fobs: "FP", SigFobs: "SIGFP", FreeR: "FREE",
@@ -220,6 +220,8 @@ export function createControlApi(ctx: Ctx) {
     // poking the modal.
     async runPymol(script: string) {
       const api = new MoorhenScriptApi(commandCentre, store);
+      // The translator reads videoRecorderRef off env when png/ray are invoked.
+      (api as any).videoRecorderRef = ctx.videoRecorderRef;
       await api.exePymol(script);
       repaint();
       return { ok: true };
