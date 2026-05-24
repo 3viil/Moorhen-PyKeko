@@ -483,52 +483,106 @@ Available tools (14): `moorhen_get_state`, `load_coordinates`, `load_map`, `go_t
 
 **Why a control file instead of a known port**: each Moorhen app picks a random port to avoid collisions and writes both the port and a per-launch token. The MCP server reads that file to find a live app — supports running both MoorhenLocal and MoorhenDev simultaneously (different vite ports → different control files).
 
+### PyMOL command translator
+
+The **Interactive Scripting** modal has a JavaScript / PyMOL dropdown (the mode persists in `localStorage` under `moorhen.scripting.mode`). The PyMOL runner is reachable from outside the modal too: `window.MoorhenControlApi.runPymol(src)` (added to the control API in this fork). User-facing reference: [`docs/pymol-translator.md`](docs/pymol-translator.md).
+
+**Implementation layout** (all in `baby-gru/src/utils/`):
+
+| File | Role |
+|------|------|
+| `MoorhenPymolParser.ts` | Line + arg parser. Strips `#`-style comments respecting quotes, joins `\`-continued lines, splits comma args while preserving commas inside parens or quotes. Returns `PymolCommand[]` with line numbers for error reporting. |
+| `MoorhenPymolSelectionParser.ts` | Lexer + recursive-descent parser for PyMOL's selection DSL → AST. Handles atom predicates, macros, topology ops, distance ops, postfix `around N` and `X within N of Y`, digit-led idents (PDB ids), negative resids, multi-arg `+` lists. |
+| `MoorhenPymolFilter.ts` | Runtime atom-filter for selections the CID-pure path can't express. Brute-force distance queries (no kd-tree — fast enough for ≤ 50k atoms). Distance-based covalent-bond approximation (covalent if d ≤ r₁ + r₂ + 0.4 Å) for `bound_to`/`extend`/`bymolecule`. `coalesceResidueCids` collapses contiguous runs of residues into ranges so the generated CID strings stay short. |
+| `MoorhenPymolTranslator.ts` | Per-command handlers + dispatcher. Each handler reads the parsed `PymolCommand`, resolves any selection arg via the two-tier compiler, then calls Moorhen APIs (`molecule.show`/`hide` for find-or-create reps, `molecule.addColourRule` + `molecule.redraw` for colours, `dispatch(setBackgroundColor)` for bg, etc.). The `PymolRegistry` tracks object names (from `fetch`/`load`) and named selections (from `select <name>, <expr>`) for the duration of one script run; cross-run object names fall back to matching by `molecule.name`. |
+
+**Two-tier selection compilation**:
+
+1. **CID-pure fast path** (`compileSlots` in the translator): chain/resi/name predicates with and/or compile straight to one or more Moorhen CID strings (joined with `||`). No atom enumeration. Covers maybe 70 % of real selections cheaply.
+2. **Runtime atom-filter** (`evaluateSelectionForMolecule` in the filter): everything else. `gemmiAtomsForCid("/*/*/*/*")` to get the atom list, then `evaluateNode` walks the AST applying per-atom predicates and set operations. Results are coalesced to residue granularity (per-atom CIDs are too granular for representations); the `||`-joined CID string goes into `addColourRule` or `addRepresentation`.
+
+**Plumbing changes** to make this work:
+
+- `MoorhenScriptApi.constructor` had a `this.store = store ? store : store` bug (always `undefined`) — fixed; `buildEnv()` extracted as a public method so JS and PyMOL modes share one env object.
+- `MoorhenControlBridge.tsx` now passes `videoRecorderRef` and exposes `glRef` via `window.__moorhen_glRef__` so screenshot (png/ray) and persistent distance labels can reach the canvas / screen-recorder without going through React context.
+- `MainContainer.tsx` exposes `__moorhen_molecules__`, `__moorhen_maps__`, `__moorhen_glRef__` on `window` for the same reason (and for the CDP test loop below).
+
+**Lessons that turned into bug fixes** (each one cost an iteration):
+
+- Moorhen's representation registry uses CIDs of the form `/*/*/*/*:*` (note the `:*` alt-loc suffix). `molecule.show(style, cid)` only does find-or-create when the cid matches exactly. The translator's `normalizeCidForMoorhen` adds the suffix for the wildcard case.
+- Moorhen's colour rules use a short cid form (`//A`, `//A/5-10`) per `ModifyColourRulesCard.tsx`. Emitting the long `/*/A/*/*` form silently fails — the rule registers but doesn't match atoms.
+- The PyMOL lexer's `+` list separator was being eaten by an over-eager "unary plus" hack (`+` followed by a digit). Removed; `+` is always a punct token. `chain A+B+C`, `resi 5+10+15+20`, `name CA+CB` all work.
+- Number tokenisation was greedy on `-`, so `resi 1-10` lexed as one NaN number, the `1` got silently dropped, and the parser saw `-10`. Tightened: numbers are digits + optional `.digits` + optional `e[+-]digits`. The `-` between range endpoints is now a separate punct token.
+- Single-letter chain ids (B, C, H, I, N, Q, R, S) clash with single-letter keyword names. The lexer stores the original-case spelling under `tok.original` and `parseStrList` prefers that in ident-list contexts; keywords still resolve lowercase.
+- `add_colour_rule` is per-rep; calling `fetchIfDirtyAndDraw("CBs")` after adding a rule spawned a stray sticks rep alongside the cartoon. Switched to `molecule.redraw()` per affected molecule.
+- `hide everything` originally only deleted `isCustom` reps and missed the default CBs from `fetchIfDirtyAndDraw`. Now removes every representation. `disable <name>` also needed to iterate `representation.hide()` (the Redux `visibleMolecules` flag alone isn't consulted by the WebGL renderer).
+- Stale-molecule defensiveness: a molecule whose `gemmiStructure` has been `.delete()`'d (e.g. left in Redux from a prior session) throws "Cannot pass deleted object as a pointer of type Structure" the moment you touch atoms. The translator filters via `isLiveMolecule` before iterating. `fetch <id>` also drops any prior molecule with the same name (PyMOL semantics).
+- `bg_color` (and any `setBackgroundColor` dispatch) auto-syncs to `defaultBackgroundColor` via `MainContainer.tsx:229-239`, which the preference persistence layer writes to `localStorage`. Test scripts that change `bg_color` *persist* it as the user's preference until they change it back.
+
+**Tests**: 62 pure-JS unit tests in `baby-gru/tests/__tests__/pymol{Parser,SelectionParser,Filter}.test.js`. No WASM, no Redux — just feeds source strings and asserts AST/CID shapes. Run with:
+
+```bash
+cd baby-gru
+npx jest --testPathPatterns pymol --selectProjects api-utils
+```
+
+### Autonomous CDP test loop
+
+For interactive iteration on the renderer (PyMOL translator, NCS ghosts, validation cycler, anything that needs eyes on the WebGL output), MoorhenDev can be driven over Chrome DevTools Protocol — no clicking through the UI, no paste-and-tell with the user.
+
+**Launch the app with debug port + permissive origins**:
+
+```bash
+/Applications/MoorhenDev.app/Contents/MacOS/MoorhenDev \
+  --remote-debugging-port=9222 \
+  --remote-allow-origins='*' \
+  > /tmp/moorhendev.log 2>&1 &
+```
+
+The `--remote-allow-origins='*'` is required — without it the WebSocket connection is 403'd. Quote the `*` so zsh doesn't glob.
+
+**The helper scripts** (live in `/tmp/` during a session, but each is ~30 lines and trivial to recreate):
+
+| Script | What it does |
+|--------|--------------|
+| `cdp-eval.py "<JS>"` | `Runtime.evaluate { expression, returnByValue, awaitPromise }`. Prints the JSON result. |
+| `cdp-inspect.py` | Same, but reads JS from stdin — better for heredocs with quotes. |
+| `cdp-reload.py` | `Page.reload { ignoreCache: true }`. Use after editing files vite is HMR'ing into the renderer. |
+| `cdp-console.py <seconds>` | Subscribes to `Runtime.consoleAPICalled`, `Runtime.exceptionThrown`, `Log.entryAdded` for N seconds and prints each event with its level. |
+| `cdp-pymol-shot.py [outfile]` | Reads a PyMOL script from stdin, calls `window.MoorhenControlApi.runPymol(src)`, sleeps 2.5 s for the render to settle, then `Page.captureScreenshot { format: "png" }` and writes the PNG. Default outfile `/tmp/pymol-shot.png`. |
+
+**The pattern** (a complete script in <30 lines):
+
+```python
+import json, urllib.request, base64
+from websocket import create_connection
+pages = json.loads(urllib.request.urlopen('http://localhost:9222/json/list').read())
+page = next(p for p in pages if p['type']=='page' and 'localhost:5174' in p.get('url',''))
+ws = create_connection(page['webSocketDebuggerUrl'])
+ws.send(json.dumps({"id":1,"method":"Runtime.evaluate",
+                    "params":{"expression":"1+1","returnByValue":True,"awaitPromise":True}}))
+print(json.loads(ws.recv())['result']['result']['value'])
+ws.close()
+```
+
+**The loop in practice** (write code → see result without user):
+
+1. Edit a `.ts` file. Vite HMR pushes the update.
+2. `python3 /tmp/cdp-reload.py` to force a fresh module graph (vite HMR doesn't reliably re-import workers / dynamic imports).
+3. `sleep 7` for cootModule to re-init.
+4. `echo "<pymol script>" | python3 /tmp/cdp-pymol-shot.py /tmp/test.png`
+5. `cat /tmp/test.png` via the Read tool — visual feedback.
+6. If broken, capture the console: `python3 /tmp/cdp-console.py 10 > /tmp/cap.txt`, run again, `grep` the log.
+
+This is what let Phase 3 of the PyMOL translator land in ~3 hours flat — every theory got a screenshot. The same setup will work for the NCS-ghost rendering pipeline, validation cyclers, drag-atoms mode, anything that's hard to verify by reading code.
+
+**Cleanup hygiene**: the loop's `bg_color` calls *persist* (see the bg_color note above). End test scripts with `bg_color black` if you don't want to overwrite the user's preference. Alternatively, drive a private Electron user-data-dir so the persistence is in a throwaway location:
+
+```bash
+MoorhenDev --user-data-dir=/tmp/moorhen-test --remote-debugging-port=9222 --remote-allow-origins='*'
+```
+
 ## Future Work
-
-### PyMOL command translator in Interactive Scripting (planned)
-
-The "Interactive scripting…" modal currently runs plain JavaScript via
-`MoorhenScriptAPI.exe()` (see `baby-gru/src/utils/MoorhenScriptAPI.ts`).
-The plan is to add a **JavaScript / PyMOL** mode toggle to the modal so users
-can paste `.pml` scripts and have them run against Moorhen.
-
-**Why**: most structural biologists already think in PyMOL command vocabulary
-(`fetch`, `show cartoon`, `color red, chain A`, `select active_site, byres
-(chain A within 4 of resn HEM)`). Letting that paste-and-run lets people port
-PyMOL recipe books into Moorhen without learning the JS/Redux layer.
-
-**Scope** (per the approved defaults):
-- Tier 1: `fetch`, `load`, `delete`, `enable`/`disable`, `zoom`, `orient`,
-  `center`, `set_view`
-- Tier 2: `show`, `hide`, `as`, `color`, `spectrum`, `bg_color`, `set
-  transparency`
-- Tier 3: full `select` with the complete selection algebra (chain/resi/resn/
-  name predicates, macros like `polymer.protein`/`solvent`/`backbone`/
-  `sidechain`, topology ops `byres`/`bychain`/`byobject`/`bound_to`/`extend`,
-  distance ops `within`/`near_to`/`beyond`/`around`, property comparisons
-  `b > 30`, `q < 0.5`, set reducers `first`/`last`)
-- Tier 4: `distance` measurements, `png`/`ray` screenshots
-- Tier 5: misc `set` commands wired to scene settings
-
-**Out of scope**: `iterate`/`alter`/`cmd.do` (arbitrary Python expressions),
-movie commands, `align`/`super`/`cealign`, `state` selector, ray-tracing,
-CGO objects.
-
-**Architecture summary**:
-- `MoorhenPymolParser.ts` — line tokenizer
-- `MoorhenPymolSelectionParser.ts` — recursive-descent selection grammar
-  parser, two-tier compilation (CID-pure vs. needs-runtime-filter)
-- `MoorhenPymolFilter.ts` — runtime atom filter + kd-tree for distance
-  operators + distance-based covalent-bond approximation
-- `MoorhenPymolTranslator.ts` — dispatcher: maps each PyMOL command to the
-  Moorhen API call(s) and awaits sequentially
-
-**Bond graph**: distance-based approximation (covalent if d ≤ r1 + r2 + 0.4 Å)
-rather than binding the libcoot bond list. ≥95% accuracy on standard residues,
-documented limitation for unusual covalent geometries.
-
-Estimated effort: ~3 working days for the full pipeline plus tests + docs.
-Full implementation plan is in [`docs/pymol-translator-plan.md`](docs/pymol-translator-plan.md).
 
 ### Other potential improvements
 

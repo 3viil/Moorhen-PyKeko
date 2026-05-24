@@ -48,9 +48,27 @@ Cycle forward (`o`) or backward (`Shift+O`) through NCS-related chains at the sa
 
 Cycles through every ligand across every loaded molecule. Toast shows `<resName> <chain>/<resNum>`.
 
+### PyMOL command translator in Interactive Scripting
+
+The **Interactive scripting…** modal has a JavaScript / PyMOL dropdown. PyMOL mode runs a substantial subset of PyMOL commands against the live Moorhen scene — paste a `.pml` script, hit Run, see it execute. Tier coverage:
+
+- **Load / view**: `fetch`, `load`, `delete`, `enable`/`disable`, `zoom`, `orient`, `center`, `set_view`
+- **Representation**: `show` / `hide` / `as` for cartoon, sticks, lines, spheres, surface (find-or-create; no duplicate reps)
+- **Colour**: `color`, `bg_color`, `spectrum b` with ~50 named PyMOL colours plus `#RRGGBB` / `0xRRGGBB`
+- **Full selection algebra**: `chain X+Y`, `resi A-B+C-D`, `name CA+CB`, macros (`polymer.protein`, `solvent`, `hetatm`, `backbone`, `sidechain`, `metals`, `ions`, `lig`), topology ops (`byres`, `bychain`, `byobject`, `bound_to`, `extend N`, `bymolecule`), distance ops (`within N of`, `near_to`, `beyond`, `gap`, `contact`, postfix `around N` and `X within N of Y`), reducers (`first`, `last`), property comparisons (`b > 30`, `q < 0.5`), and named selections via `select`
+- **Measurements**: `distance` with a real labelled dashed line in the viewport + snackbar toast + console log
+- **Screenshots**: `png` (and `ray` falls back to `png` — no software ray-tracer in Moorhen)
+- **Settings**: `set transparency`, `ray_shadow`, `ambient`, `specular`, `rocking`, `fog_start`/`_end`, `ray_trace_mode`, `draw_axes`/`_crosshairs`/`_scale_bar`, …
+
+Anything unsupported (`iterate`, `alter`, `cmd.do`, movie commands, etc.) warns to the console with the line number and continues. .pml files dropped into **Load and execute script…** auto-route to the PyMOL runner.
+
+Full reference at [`docs/pymol-translator.md`](docs/pymol-translator.md); implementation in [PROJECT-NOTES.md](PROJECT-NOTES.md#pymol-command-translator); 62 pure-JS unit tests in `baby-gru/tests/__tests__/pymol*.test.js` (run with `npx jest --testPathPatterns pymol --selectProjects api-utils`).
+
 ### Claude control via MCP
 
 [MoorhenMCP](https://github.com/3viil/MoorhenMCP) is a Model Context Protocol server that drives a running MoorhenLocal/MoorhenDev app from Claude (load coords/maps, navigate, refine, rotamer fit, flip peptide, add waters, delete, undo/redo, screenshot). The Electron wrapper (token-authenticated HTTP control server) and the in-page bridge (`MoorhenControlApi` / `MoorhenControlBridge`) are part of this fork.
+
+`MoorhenControlApi` also exposes `runPymol(src)` and `runJs(src)`, used by [the autonomous CDP test loop](PROJECT-NOTES.md#autonomous-cdp-test-loop) — scripts can be driven from outside the app entirely.
 
 ## What's different from upstream
 
