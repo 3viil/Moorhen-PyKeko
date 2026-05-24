@@ -28,7 +28,28 @@ Coot version 0.9.x, the ubiquitous model-building tool for X-ray crystallography
 
 **Moorhen** is the same Coot C++ engine compiled to WebAssembly with a modern React/WebGL frontend, developed by the same CCP4/MRC-LMB team. It runs natively in browsers and as an Electron app on Tahoe — no XQuartz needed.
 
-This project customizes Moorhen with Coot 0.9.x-style keyboard shortcuts and UX defaults, then wraps the dev server in a desktop app for one-click launching.
+This project customizes Moorhen with Coot 0.9.x-style keyboard shortcuts and UX defaults, then wraps the dev server in a desktop app for one-click launching. It also adds several substantive features on top — those are described first.
+
+---
+
+## Major additions vs upstream
+
+The biggest features added on top of upstream Moorhen. Each has a full implementation writeup further down in [Implemented features (beyond upstream)](#implemented-features-beyond-upstream). At a glance:
+
+| Feature | What it does | Entry point |
+|---------|--------------|-------------|
+| **PyMOL command translator** | JS / PyMOL mode toggle in Interactive Scripting; runs `.pml` scripts against Moorhen with the full PyMOL selection algebra | Edit menu → Interactive scripting…, or `.pml` via Load and execute script… |
+| **NCS Ghosts** | Translucent copies of NCS-related chains overlaid on a chosen master, computed in C++ via SSM | `g` shortcut, or the NCS Ghosts accordion in the molecule card |
+| **Claude / MoorhenMCP** | MCP server drives the live app — load, navigate, refine, screenshot, plus `runPymol`/`runJs` for headless scripting | `claude mcp add moorhen -- node ~/MoorhenMCP/dist/server.js` |
+| **Validation issue cycler** | Merged outlier list (Rama + rotamer + density-fit) with type tags | `n` / `Shift+N` |
+| **Difference-map peak cycler** | Walk signed Fo–Fc peaks above ±3σ | `p` / `Shift+P` |
+| **NCS jump** | Cycle to the same residue number on the next NCS-related chain | `o` / `Shift+O` |
+| **Drag atoms** | Interactive pull-with-refinement at the active selection size | `d` |
+| **Single water at crosshairs** | Place + single-residue refine; new C++ primitive | `w` (replaces upstream batch add_waters) |
+| **Ligand cycle** | Walk every ligand across every molecule | `l` |
+| **Autonomous CDP test loop** | Drive the app from Python via Chrome DevTools Protocol — write/edit/screenshot iteratively | `--remote-debugging-port=9222`; see [§ Autonomous CDP test loop](#autonomous-cdp-test-loop) |
+
+After the headline features, the rest of this document covers the smaller Coot-style shortcut/UX customizations, then the Electron wrapper, build instructions, and troubleshooting.
 
 ---
 
@@ -350,6 +371,51 @@ For ongoing customizations:
 
 ## Implemented features (beyond upstream)
 
+Ordered by impact / size of change. PyMOL translator and MCP integration are the largest; ligand / water / NCS-jump are smaller key-shortcut features that wrap existing libcoot capability.
+
+### PyMOL command translator
+
+The **Interactive Scripting** modal has a JavaScript / PyMOL dropdown (the mode persists in `localStorage` under `moorhen.scripting.mode`). The PyMOL runner is reachable from outside the modal too: `window.MoorhenControlApi.runPymol(src)` (added to the control API in this fork). User-facing reference: [`docs/pymol-translator.md`](docs/pymol-translator.md).
+
+**Implementation layout** (all in `baby-gru/src/utils/`):
+
+| File | Role |
+|------|------|
+| `MoorhenPymolParser.ts` | Line + arg parser. Strips `#`-style comments respecting quotes, joins `\`-continued lines, splits comma args while preserving commas inside parens or quotes. Returns `PymolCommand[]` with line numbers for error reporting. |
+| `MoorhenPymolSelectionParser.ts` | Lexer + recursive-descent parser for PyMOL's selection DSL → AST. Handles atom predicates, macros, topology ops, distance ops, postfix `around N` and `X within N of Y`, digit-led idents (PDB ids), negative resids, multi-arg `+` lists. |
+| `MoorhenPymolFilter.ts` | Runtime atom-filter for selections the CID-pure path can't express. Brute-force distance queries (no kd-tree — fast enough for ≤ 50k atoms). Distance-based covalent-bond approximation (covalent if d ≤ r₁ + r₂ + 0.4 Å) for `bound_to`/`extend`/`bymolecule`. `coalesceResidueCids` collapses contiguous runs of residues into ranges so the generated CID strings stay short. |
+| `MoorhenPymolTranslator.ts` | Per-command handlers + dispatcher. Each handler reads the parsed `PymolCommand`, resolves any selection arg via the two-tier compiler, then calls Moorhen APIs (`molecule.show`/`hide` for find-or-create reps, `molecule.addColourRule` + `molecule.redraw` for colours, `dispatch(setBackgroundColor)` for bg, etc.). The `PymolRegistry` tracks object names (from `fetch`/`load`) and named selections (from `select <name>, <expr>`) for the duration of one script run; cross-run object names fall back to matching by `molecule.name`. |
+
+**Two-tier selection compilation**:
+
+1. **CID-pure fast path** (`compileSlots` in the translator): chain/resi/name predicates with and/or compile straight to one or more Moorhen CID strings (joined with `||`). No atom enumeration. Covers maybe 70 % of real selections cheaply.
+2. **Runtime atom-filter** (`evaluateSelectionForMolecule` in the filter): everything else. `gemmiAtomsForCid("/*/*/*/*")` to get the atom list, then `evaluateNode` walks the AST applying per-atom predicates and set operations. Results are coalesced to residue granularity (per-atom CIDs are too granular for representations); the `||`-joined CID string goes into `addColourRule` or `addRepresentation`.
+
+**Plumbing changes** to make this work:
+
+- `MoorhenScriptApi.constructor` had a `this.store = store ? store : store` bug (always `undefined`) — fixed; `buildEnv()` extracted as a public method so JS and PyMOL modes share one env object. `molecules` / `maps` are now live getters off `store.getState()` rather than constructor-time snapshots.
+- `MoorhenControlBridge.tsx` now passes `videoRecorderRef` and exposes `glRef` via `window.__moorhen_glRef__` so screenshot (png/ray) and persistent distance labels can reach the canvas / screen-recorder without going through React context.
+- `MainContainer.tsx` exposes `__moorhen_molecules__`, `__moorhen_maps__`, `__moorhen_glRef__` on `window` for the same reason (and for the CDP test loop below).
+
+**Lessons that turned into bug fixes** (each one cost an iteration):
+
+- Moorhen's representation registry uses CIDs of the form `/*/*/*/*:*` (note the `:*` alt-loc suffix). `molecule.show(style, cid)` only does find-or-create when the cid matches exactly. The translator's `normalizeCidForMoorhen` adds the suffix for the wildcard case.
+- Moorhen's colour rules use a short cid form (`//A`, `//A/5-10`) per `ModifyColourRulesCard.tsx`. Emitting the long `/*/A/*/*` form silently fails — the rule registers but doesn't match atoms.
+- The PyMOL lexer's `+` list separator was being eaten by an over-eager "unary plus" hack (`+` followed by a digit). Removed; `+` is always a punct token. `chain A+B+C`, `resi 5+10+15+20`, `name CA+CB` all work.
+- Number tokenisation was greedy on `-`, so `resi 1-10` lexed as one NaN number, the `1` got silently dropped, and the parser saw `-10`. Tightened: numbers are digits + optional `.digits` + optional `e[+-]digits`. The `-` between range endpoints is now a separate punct token.
+- Single-letter chain ids (B, C, H, I, N, Q, R, S) clash with single-letter keyword names. The lexer stores the original-case spelling under `tok.original` and `parseStrList` prefers that in ident-list contexts; keywords still resolve lowercase.
+- `add_colour_rule` is per-rep; calling `fetchIfDirtyAndDraw("CBs")` after adding a rule spawned a stray sticks rep alongside the cartoon. Switched to `molecule.redraw()` per affected molecule.
+- `hide everything` originally only deleted `isCustom` reps and missed the default CBs from `fetchIfDirtyAndDraw`. Now removes every representation. `disable <name>` also needed to iterate `representation.hide()` (the Redux `visibleMolecules` flag alone isn't consulted by the WebGL renderer).
+- Stale-molecule defensiveness: a molecule whose `gemmiStructure` has been `.delete()`'d (e.g. left in Redux from a prior session) throws "Cannot pass deleted object as a pointer of type Structure" the moment you touch atoms. The translator filters via `isLiveMolecule` before iterating. `fetch <id>` also drops any prior molecule with the same name (PyMOL semantics).
+- `bg_color` (and any `setBackgroundColor` dispatch) auto-syncs to `defaultBackgroundColor` via `MainContainer.tsx:229-239`, which the preference persistence layer writes to `localStorage`. Test scripts that change `bg_color` *persist* it as the user's preference until they change it back.
+
+**Tests**: 62 pure-JS unit tests in `baby-gru/tests/__tests__/pymol{Parser,SelectionParser,Filter}.test.js`. No WASM, no Redux — just feeds source strings and asserts AST/CID shapes. Run with:
+
+```bash
+cd baby-gru
+npx jest --testPathPatterns pymol --selectProjects api-utils
+```
+
 ### NCS Ghosts
 
 **What you see**: pick a master chain (or hover over one and hit `g`); every NCS-related chain is rendered as a translucent, color-cycled bond mesh *transformed onto* that master, so a tight NCS oligomer collapses into a single visually overlaid set of bonds and you can see immediately where copies disagree.
@@ -392,34 +458,27 @@ For ongoing customizations:
 - Only fires for chains in the same NCS group as the master; cross-group "show me all the chains aligned onto X" would need looser matching.
 - `get_ncs_ghost_matrix` returns "" silently on alignment failure; no UI for that yet.
 
-### `o` — NCS jump
+### MCP control surface (Claude integration)
 
-Cycle through NCS-related chains at the same residue number. Handler in `MoorhenKeyboardPress.ts`: takes the current centre atom (or hovered atom), looks up its chain in `getNcsRelatedChains()`, finds the next chain in the group, then dispatches a centre update for the same residue number on that chain. Useful for visually walking equivalent positions in an oligomer one tap at a time.
+Three layers, each in its own repo:
 
-### `l` — Go to next ligand (cycles)
+| Layer | Lives in | Role |
+|-------|----------|------|
+| Renderer facade | `baby-gru/src/api/MoorhenControlApi.ts` (this fork) | `window.MoorhenControlApi.load/navigate/refine/...` — the actual scripted operations against the Redux store + `commandCentre` |
+| Renderer bridge | `baby-gru/src/api/MoorhenControlBridge.tsx` (this fork) | React component mounted by `MainContainer`; listens to wrapper IPC (`ipcRenderer.on('moorhen-control:invoke')`), dispatches to the facade, responds via `moorhen-control:reply`. After scene-changing ops also dispatches `setRequestDrawScene(true)` because headless control has no mouse events to trigger a repaint. |
+| Electron control server | `main.js` in [MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) | Token-authenticated HTTP server on `127.0.0.1:<random>`, writes `{port, token, vitePort, title, pid}` to `~/.moorhen-mcp/control-<vitePort>.json`. Forwards POSTed `{token, verb, args}` to the renderer via IPC. Serves `screenshot` directly via `webContents.capturePage()`. |
+| Stdio MCP server | [MoorhenMCP](https://github.com/3viil/MoorhenMCP) (separate repo) | `dist/server.js` is the actual MCP endpoint Claude talks to. Resolves the control file (default port 5173 = MoorhenLocal, override with `MOORHEN_VITE_PORT=5174` for MoorhenDev), POSTs to the wrapper, returns text or image content. |
 
-Replaces upstream's `Shift+L` behavior. Handler iterates every `molecule.ligands` list across `molecules`, flattening to one stable list. A **module-level** `ligandCycleIdx` (in `MoorhenKeyboardPress.ts`) advances on each press so successive `l` presses walk through ligands deterministically — no Redux state, no per-component refs. Toast announces `<resName> <chain>/<resNum>` so you can tell where you landed.
+Registration:
+```bash
+claude mcp add moorhen -- node /Users/mhilgers/MoorhenMCP/dist/server.js
+```
 
-This deliberately *cycles* (`(idx + 1) % total`) rather than jumping to the nearest, matching Coot's go-to-ligand UX.
+Available tools (14): `moorhen_get_state`, `load_coordinates`, `load_map`, `go_to_residue`, `refine`, `auto_fit_rotamer`, `flip_peptide`, `add_terminal_residue`, `add_waters`, `delete`, `set_active_map`, `undo`, `redo`, `screenshot`.
 
-### `w` — Single water at crosshairs + refine
+**To add a new tool**: extend `MoorhenControlApi` (renderer) → add a case in `MoorhenControlBridge`'s verb switch → expose it as a tool in `MoorhenMCP/src/server.ts`. The wrapper layer is generic and forwards anything.
 
-Replaces upstream's batch `add_waters` on the `w` shortcut. Pipeline:
-
-1. **Handler** in `MoorhenKeyboardPress.ts`: reads `state.glRef.origin` (negated atom coord of the view centre), calls `targetMolecule.addWaterAtPosition(-ox, -oy, -oz)` → CID of the new water, then `refine_residues_using_atom_cid` in `SINGLE` mode against the active map.
-2. **JS wrapper** `MoorhenMolecule.addWaterAtPosition(x, y, z)`: thin call to the new C++ binding; flips `setAtomsDirty(true)` so the next redraw refetches bonds.
-3. **C++** `molecules_container_t::add_water_at_position` in `coot-patches/molecules-container-add-water-at-position.cc`: constructs a 1-element `coot::minimol::molecule` at (x,y,z) and calls `molecules[imol].insert_waters_into_molecule(water_mol, "HOH")` — which already handles solvent-chain selection, creating one if absent, and incrementing seqNum. Then scans the mmdb hierarchy for the highest-seqNum HOH in any solvent chain and returns its CID `/1/<chain>/<resno>`.
-
-The refine step is one extra `cootCommand` call so we kept it. Adding it as `WHOLE_MOLECULE` mode would refine too much; we use `SINGLE` so only the new water moves to fit density.
-
-### `p` — Next difference-map peak
-
-Cycle through signed difference-map peaks above ±3σ. Uses already-bound `difference_map_peaks(imol_map, imol_protein, n_rmsd)`. Handler in `MoorhenKeyboardPress.ts`:
-- Auto-finds the first map with `isDifference: true` from `state.maps`
-- Caches the peaks list per `(model, map)` tuple in module scope; refetches when the cache key changes
-- Sorts by `|featureValue|` descending so the biggest |sigma| comes first
-- `Shift+P` walks the same list backward (`(idx - 1 + len) % len`)
-- Dispatches `setOrigin([-x, -y, -z])` to centre on the peak
+**Why a control file instead of a known port**: each Moorhen app picks a random port to avoid collisions and writes both the port and a per-launch token. The MCP server reads that file to find a live app — supports running both MoorhenLocal and MoorhenDev simultaneously (different vite ports → different control files).
 
 ### `n` — Next validation issue (merged)
 
@@ -431,6 +490,19 @@ Merges three categories into one cycle:
 Each entry carries a `type` tag (`rama` | `rotamer` | `density`) so the toast says `Issue 4/17 (rotamer): //A/123 PHE p=0.018`. Merged list sorted by per-category-normalized badness descending. Module-level cycle index; `Shift+N` reverses.
 
 Clashes (the planned 4th category) need a fresh Embind value-object registration for `coot::plain_atom_overlap_t` + `coot::atom_spec_t` so the existing `get_atom_overlaps` API can be exposed to JS. Deferred.
+
+### `p` — Next difference-map peak
+
+Cycle through signed difference-map peaks above ±3σ. Uses already-bound `difference_map_peaks(imol_map, imol_protein, n_rmsd)`. Handler in `MoorhenKeyboardPress.ts`:
+- Auto-finds the first map with `isDifference: true` from `state.maps`
+- Caches the peaks list per `(model, map, editVer)` tuple in module scope — invalidated when edit-history depth changes so refines/adds don't show stale peaks
+- Sorts by `|featureValue|` descending so the biggest |sigma| comes first
+- `Shift+P` walks the same list backward (`(idx - 1 + len) % len`)
+- Dispatches `setOrigin([-x, -y, -z])` to centre on the peak
+
+### `o` — NCS jump
+
+Cycle through NCS-related chains at the same residue number. Handler in `MoorhenKeyboardPress.ts`: takes the current centre atom (or hovered atom), looks up its chain in `getNcsRelatedChains()`, finds the next chain in the group, then dispatches a centre update for the same residue number on that chain. Useful for visually walking equivalent positions in an oligomer one tap at a time.
 
 ### `d` — Drag atoms (interactive refinement)
 
@@ -457,74 +529,38 @@ The Accept/Reject snackbar handles the rest. `dist_ang_2d` was on `d` upstream; 
    backend but the UI dropdown does not list them** — they are scriptable
    only.
 
+### `w` — Single water at crosshairs + refine
+
+Replaces upstream's batch `add_waters` on the `w` shortcut. Pipeline:
+
+1. **Handler** in `MoorhenKeyboardPress.ts`: reads `state.glRef.origin` (negated atom coord of the view centre), calls `targetMolecule.addWaterAtPosition(-ox, -oy, -oz)` → CID of the new water, then `refine_residues_using_atom_cid` in `SINGLE` mode against the active map.
+2. **JS wrapper** `MoorhenMolecule.addWaterAtPosition(x, y, z)`: thin call to the new C++ binding; flips `setAtomsDirty(true)` so the next redraw refetches bonds.
+3. **C++** `molecules_container_t::add_water_at_position` in `coot-patches/molecules-container-add-water-at-position.cc`: constructs a 1-element `coot::minimol::molecule` at (x,y,z) and calls `molecules[imol].insert_waters_into_molecule(water_mol, "HOH")` — which already handles solvent-chain selection, creating one if absent, and incrementing seqNum. Then scans the mmdb hierarchy for the highest-seqNum HOH in any solvent chain and returns its CID `/1/<chain>/<resno>`.
+
+The refine step is one extra `cootCommand` call so we kept it. Adding it as `WHOLE_MOLECULE` mode would refine too much; we use `SINGLE` so only the new water moves to fit density.
+
+### `l` — Go to next ligand (cycles)
+
+Replaces upstream's `Shift+L` behavior. Handler iterates every `molecule.ligands` list across `molecules`, flattening to one stable list. A **module-level** `ligandCycleIdx` (in `MoorhenKeyboardPress.ts`) advances on each press so successive `l` presses walk through ligands deterministically — no Redux state, no per-component refs. Toast announces `<resName> <chain>/<resNum>` so you can tell where you landed.
+
+This deliberately *cycles* (`(idx + 1) % total`) rather than jumping to the nearest, matching Coot's go-to-ligand UX.
+
 ### Space-jump robustness
 
 `jump_next_residue` / `jump_previous_residue` used to bail when `state.molecules.visibleMolecules` was empty (`getCentreAtom` filters by `isVisible()`). The MCP `load_coordinates` flow doesn't dispatch `showMolecule`, so models loaded via Claude never landed in that list and space did nothing. Handler now falls back to `hoveredAtom.molecule ?? molecules[0]` and calls `get_active_atom` directly when `getCentreAtom` returns null.
 
-### MCP control surface (Claude integration)
+### CIF ligand dictionary handling
 
-Three layers, each in its own repo:
+Four related fixes:
 
-| Layer | Lives in | Role |
-|-------|----------|------|
-| Renderer facade | `baby-gru/src/api/MoorhenControlApi.ts` (this fork) | `window.MoorhenControlApi.load/navigate/refine/...` — the actual scripted operations against the Redux store + `commandCentre` |
-| Renderer bridge | `baby-gru/src/api/MoorhenControlBridge.tsx` (this fork) | React component mounted by `MainContainer`; listens to wrapper IPC (`ipcRenderer.on('moorhen-control:invoke')`), dispatches to the facade, responds via `moorhen-control:reply`. After scene-changing ops also dispatches `setRequestDrawScene(true)` because headless control has no mouse events to trigger a repaint. |
-| Electron control server | `main.js` in [MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) | Token-authenticated HTTP server on `127.0.0.1:<random>`, writes `{port, token, vitePort, title, pid}` to `~/.moorhen-mcp/control-<vitePort>.json`. Forwards POSTed `{token, verb, args}` to the renderer via IPC. Serves `screenshot` directly via `webContents.capturePage()`. |
-| Stdio MCP server | [MoorhenMCP](https://github.com/3viil/MoorhenMCP) (separate repo) | `dist/server.js` is the actual MCP endpoint Claude talks to. Resolves the control file (default port 5173 = MoorhenLocal, override with `MOORHEN_VITE_PORT=5174` for MoorhenDev), POSTs to the wrapper, returns text or image content. |
+1. **Drop-handler in `MoorhenContainer.tsx`**: when a `.cif` is dropped and `state.molecules.moleculeList.length > 0`, peek at the file (`text.includes("data_comp_") && !text.includes("_atom_site")`) — if it looks like a dictionary, route to `molecule.addDict(text)` on every loaded molecule instead of `createMoleculeFromFile()`. Falls back to the old molecule-creation path if no molecules are loaded yet.
+2. **Import Dictionary dialog defaults** (`ImportLigandDictionary.tsx`):
+   - "Make monomer available to" now defaults to `molecules[0]` if any are loaded (was `null` = "Any molecule", which doesn't trigger an actual redraw of the existing structures). Also sets `selectValueRef.current` to the same value so the default is the value `onOK` reads.
+   - "Create instance on read" defaults to `false`. The 99% case is "I dropped a .cif into the side panel, please teach Moorhen about this ligand that's already in my structure" — not "load a separate copy of this ligand as its own molecule".
+3. **`createRef.current` sync bug** (`ImportLigandDictionary.tsx`): the ref was initialized to `true` and the `setCreateInstance` setter never updated it. Toggling the checkbox visually flipped but `onOK` always saw `createRef.current === true` so it always created an instance. Added a `useEffect(() => { createRef.current = createInstance }, [createInstance])` to sync. The same pattern is in `SMILESToLigand.tsx` for consistency (though `SMILES → ligand` legitimately defaults to creating an instance — that path doesn't have a pre-existing structure to attach to).
+4. **`setAtomsDirty(true)` after dict load** (`MoorhenMolecule.ts`): both `addDict()` and `loadMissingMonomers()` now invalidate the atom cache. Without this, the renderer reused the old bond list (drawn before the dict was known), so unknown ligands kept looking broken until the user manually forced a redraw.
 
-Registration:
-```bash
-claude mcp add moorhen -- node /Users/mhilgers/MoorhenMCP/dist/server.js
-```
-
-Available tools (14): `moorhen_get_state`, `load_coordinates`, `load_map`, `go_to_residue`, `refine`, `auto_fit_rotamer`, `flip_peptide`, `add_terminal_residue`, `add_waters`, `delete`, `set_active_map`, `undo`, `redo`, `screenshot`.
-
-**To add a new tool**: extend `MoorhenControlApi` (renderer) → add a case in `MoorhenControlBridge`'s verb switch → expose it as a tool in `MoorhenMCP/src/server.ts`. The wrapper layer is generic and forwards anything.
-
-**Why a control file instead of a known port**: each Moorhen app picks a random port to avoid collisions and writes both the port and a per-launch token. The MCP server reads that file to find a live app — supports running both MoorhenLocal and MoorhenDev simultaneously (different vite ports → different control files).
-
-### PyMOL command translator
-
-The **Interactive Scripting** modal has a JavaScript / PyMOL dropdown (the mode persists in `localStorage` under `moorhen.scripting.mode`). The PyMOL runner is reachable from outside the modal too: `window.MoorhenControlApi.runPymol(src)` (added to the control API in this fork). User-facing reference: [`docs/pymol-translator.md`](docs/pymol-translator.md).
-
-**Implementation layout** (all in `baby-gru/src/utils/`):
-
-| File | Role |
-|------|------|
-| `MoorhenPymolParser.ts` | Line + arg parser. Strips `#`-style comments respecting quotes, joins `\`-continued lines, splits comma args while preserving commas inside parens or quotes. Returns `PymolCommand[]` with line numbers for error reporting. |
-| `MoorhenPymolSelectionParser.ts` | Lexer + recursive-descent parser for PyMOL's selection DSL → AST. Handles atom predicates, macros, topology ops, distance ops, postfix `around N` and `X within N of Y`, digit-led idents (PDB ids), negative resids, multi-arg `+` lists. |
-| `MoorhenPymolFilter.ts` | Runtime atom-filter for selections the CID-pure path can't express. Brute-force distance queries (no kd-tree — fast enough for ≤ 50k atoms). Distance-based covalent-bond approximation (covalent if d ≤ r₁ + r₂ + 0.4 Å) for `bound_to`/`extend`/`bymolecule`. `coalesceResidueCids` collapses contiguous runs of residues into ranges so the generated CID strings stay short. |
-| `MoorhenPymolTranslator.ts` | Per-command handlers + dispatcher. Each handler reads the parsed `PymolCommand`, resolves any selection arg via the two-tier compiler, then calls Moorhen APIs (`molecule.show`/`hide` for find-or-create reps, `molecule.addColourRule` + `molecule.redraw` for colours, `dispatch(setBackgroundColor)` for bg, etc.). The `PymolRegistry` tracks object names (from `fetch`/`load`) and named selections (from `select <name>, <expr>`) for the duration of one script run; cross-run object names fall back to matching by `molecule.name`. |
-
-**Two-tier selection compilation**:
-
-1. **CID-pure fast path** (`compileSlots` in the translator): chain/resi/name predicates with and/or compile straight to one or more Moorhen CID strings (joined with `||`). No atom enumeration. Covers maybe 70 % of real selections cheaply.
-2. **Runtime atom-filter** (`evaluateSelectionForMolecule` in the filter): everything else. `gemmiAtomsForCid("/*/*/*/*")` to get the atom list, then `evaluateNode` walks the AST applying per-atom predicates and set operations. Results are coalesced to residue granularity (per-atom CIDs are too granular for representations); the `||`-joined CID string goes into `addColourRule` or `addRepresentation`.
-
-**Plumbing changes** to make this work:
-
-- `MoorhenScriptApi.constructor` had a `this.store = store ? store : store` bug (always `undefined`) — fixed; `buildEnv()` extracted as a public method so JS and PyMOL modes share one env object.
-- `MoorhenControlBridge.tsx` now passes `videoRecorderRef` and exposes `glRef` via `window.__moorhen_glRef__` so screenshot (png/ray) and persistent distance labels can reach the canvas / screen-recorder without going through React context.
-- `MainContainer.tsx` exposes `__moorhen_molecules__`, `__moorhen_maps__`, `__moorhen_glRef__` on `window` for the same reason (and for the CDP test loop below).
-
-**Lessons that turned into bug fixes** (each one cost an iteration):
-
-- Moorhen's representation registry uses CIDs of the form `/*/*/*/*:*` (note the `:*` alt-loc suffix). `molecule.show(style, cid)` only does find-or-create when the cid matches exactly. The translator's `normalizeCidForMoorhen` adds the suffix for the wildcard case.
-- Moorhen's colour rules use a short cid form (`//A`, `//A/5-10`) per `ModifyColourRulesCard.tsx`. Emitting the long `/*/A/*/*` form silently fails — the rule registers but doesn't match atoms.
-- The PyMOL lexer's `+` list separator was being eaten by an over-eager "unary plus" hack (`+` followed by a digit). Removed; `+` is always a punct token. `chain A+B+C`, `resi 5+10+15+20`, `name CA+CB` all work.
-- Number tokenisation was greedy on `-`, so `resi 1-10` lexed as one NaN number, the `1` got silently dropped, and the parser saw `-10`. Tightened: numbers are digits + optional `.digits` + optional `e[+-]digits`. The `-` between range endpoints is now a separate punct token.
-- Single-letter chain ids (B, C, H, I, N, Q, R, S) clash with single-letter keyword names. The lexer stores the original-case spelling under `tok.original` and `parseStrList` prefers that in ident-list contexts; keywords still resolve lowercase.
-- `add_colour_rule` is per-rep; calling `fetchIfDirtyAndDraw("CBs")` after adding a rule spawned a stray sticks rep alongside the cartoon. Switched to `molecule.redraw()` per affected molecule.
-- `hide everything` originally only deleted `isCustom` reps and missed the default CBs from `fetchIfDirtyAndDraw`. Now removes every representation. `disable <name>` also needed to iterate `representation.hide()` (the Redux `visibleMolecules` flag alone isn't consulted by the WebGL renderer).
-- Stale-molecule defensiveness: a molecule whose `gemmiStructure` has been `.delete()`'d (e.g. left in Redux from a prior session) throws "Cannot pass deleted object as a pointer of type Structure" the moment you touch atoms. The translator filters via `isLiveMolecule` before iterating. `fetch <id>` also drops any prior molecule with the same name (PyMOL semantics).
-- `bg_color` (and any `setBackgroundColor` dispatch) auto-syncs to `defaultBackgroundColor` via `MainContainer.tsx:229-239`, which the preference persistence layer writes to `localStorage`. Test scripts that change `bg_color` *persist* it as the user's preference until they change it back.
-
-**Tests**: 62 pure-JS unit tests in `baby-gru/tests/__tests__/pymol{Parser,SelectionParser,Filter}.test.js`. No WASM, no Redux — just feeds source strings and asserts AST/CID shapes. Run with:
-
-```bash
-cd baby-gru
-npx jest --testPathPatterns pymol --selectProjects api-utils
-```
+These work together: drop a `.cif` for a ligand that's already in your structure → it gets attached to the right molecule by default → bonds redraw immediately → no zombie monomer "molecules" cluttering the side panel.
 
 ### Autonomous CDP test loop
 
