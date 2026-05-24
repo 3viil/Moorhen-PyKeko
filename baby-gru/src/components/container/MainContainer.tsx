@@ -110,11 +110,13 @@ export const MoorhenContainer = (props: ContainerProps) => {
 
     const molecules = useSelector((state: moorhen.State) => state.molecules.moleculeList);
     const maps = useSelector((state: moorhen.State) => state.maps);
-    // Debug: expose molecules on window for DevTools console testing
+    // Debug: expose molecules/maps/glRef on window for DevTools console testing
+    // and for the PyMOL translator's measurement/screenshot commands.
     useEffect(() => {
         (window as any).__moorhen_molecules__ = molecules;
         (window as any).__moorhen_maps__ = maps;
-    }, [molecules, maps]);
+        (window as any).__moorhen_glRef__ = glRef;
+    }, [molecules, maps, glRef]);
     // const hoveredAtom = useSelector((state: moorhen.State) => state.hoveringStates.hoveredAtom);
     const cursorStyle = useSelector((state: moorhen.State) => state.hoveringStates.cursorStyle);
 

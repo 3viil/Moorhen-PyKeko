@@ -4,6 +4,7 @@ import { webGL } from "../types/mgWebGL";
 import { addMolecule, removeMolecule, showMolecule, hideMolecule } from "../store/moleculesSlice";
 import { addMap } from "../store/mapsSlice";
 import { setOrigin, setZoom, setQuat, setRequestDrawScene, setLightPosition, setAmbient, setSpecular, setDiffuse, setSpecularPower, setFogClipOffset, setFogStart, setFogEnd, setClipStart, setClipEnd, setActiveMolecule, setDraggableMolecule, setDisplayBuffers} from "../store/glRefSlice"
+import { enqueueSnackbar } from "@/store"
 import { addTextOverlay, addSvgPathOverlay, addFracPathOverlay, emptyOverlays} from "../store/overlaysSlice"
 import { setDrawCrosshairs, setDrawScaleBar, setDrawMissingLoops, setDefaultBondSmoothness,
     setDoSSAO, setSsaoRadius, setSsaoBias, setResetClippingFogging, setClipCap, resetSceneSettings, setEdgeDetectNormalScale,
@@ -188,6 +189,7 @@ export class MoorhenScriptApi  {
             setuseTorsionRefinementRestraints: setuseTorsionRefinementRestraints,
             setRefinementSelection: setRefinementSelection,
             resetRefinementSettings: resetRefinementSettings,
+            enqueueSnackbar: enqueueSnackbar,
             store: this.store,
         };
         return env;

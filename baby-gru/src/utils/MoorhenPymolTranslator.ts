@@ -714,9 +714,9 @@ const cmdDeselect = async () => {
 
 const cmdDistance = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     // `distance [name,] sel1, sel2` — compute centroid-to-centroid distance.
-    // PyMOL renders a labelled dashed line; we currently just log the value
-    // (visual annotation via Moorhen's measurement system is mouse-driven and
-    // would need a separate hook).
+    // Draws a labelled dashed line in the viewport (via the same measurement
+    // system the mouse-click tool uses) AND fires a snackbar toast with the
+    // numeric value AND logs to console.
     let name: string | undefined;
     let sel1Arg: string | undefined;
     let sel2Arg: string | undefined;
@@ -729,27 +729,57 @@ const cmdDistance = async (cmd: PymolCommand, env: any, registry: PymolRegistry)
         return;
     }
 
-    const centroidOf = async (selArg: string): Promise<[number, number, number] | null> => {
+    const centroidOf = async (selArg: string): Promise<{ x: number; y: number; z: number; n: number; sample: any | null }> => {
         const targets = await resolveSelection(selArg, env, registry);
-        if (targets.length === 0) return null;
         let sx = 0, sy = 0, sz = 0, n = 0;
+        let sample: any | null = null;
         for (const { molecule, cid } of targets) {
             const atoms = await molecule.gemmiAtomsForCid(cid);
-            for (const a of atoms) { sx += a.x; sy += a.y; sz += a.z; n++; }
+            for (const a of atoms) {
+                sx += a.x; sy += a.y; sz += a.z; n++;
+                if (!sample) sample = a;
+            }
         }
-        return n > 0 ? [sx / n, sy / n, sz / n] : null;
+        return { x: sx / Math.max(1, n), y: sy / Math.max(1, n), z: sz / Math.max(1, n), n, sample };
     };
 
     const a = await centroidOf(sel1Arg!);
     const b = await centroidOf(sel2Arg!);
-    if (!a || !b) {
+    if (a.n === 0 || b.n === 0) {
         console.warn(`[pymol:${cmd.lineNo}] distance: empty selection`);
         return;
     }
-    const dx = a[0] - b[0], dy = a[1] - b[1], dz = a[2] - b[2];
+    const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
     const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
     const label = name ? `${name}: ` : "";
-    console.log(`[pymol:${cmd.lineNo}] distance ${label}${d.toFixed(2)} Å`);
+    const msg = `distance ${label}${d.toFixed(2)} Å`;
+    console.log(`[pymol:${cmd.lineNo}] ${msg}`);
+
+    // Snackbar toast
+    if (env.enqueueSnackbar) {
+        env.dispatch(env.enqueueSnackbar({ message: msg, variant: "info" }));
+    }
+
+    // Persistent visual annotation: push a synthetic atom pair into the canvas
+    // measurement system. Uses the centroid coordinates and a representative
+    // sample atom for the label fields.
+    const glRef = (window as any).__moorhen_glRef__;
+    const gl = glRef?.current;
+    if (gl) {
+        const mkAtom = (centroid: typeof a, label: string) => ({
+            x: centroid.x, y: centroid.y, z: centroid.z,
+            charge: 0, tempFactor: 0, element: centroid.sample?.element ?? "X",
+            name: label, res_name: centroid.sample?.res_name ?? "", res_no: centroid.sample?.res_no ?? 0,
+            mol_name: "", serial: 0, has_altloc: false, chain_id: centroid.sample?.chain_id ?? "",
+            label,
+        });
+        if (!Array.isArray(gl.measuredAtoms)) gl.measuredAtoms = [];
+        gl.measuredAtoms.push([
+            mkAtom(a, name ? `${name}.start` : "start"),
+            mkAtom(b, name ? `${name}.end` : "end"),
+        ]);
+        try { gl.updateLabels?.(); gl.drawScene?.(); } catch (e) { /* renderer not ready */ }
+    }
 };
 
 const cmdPng = async (cmd: PymolCommand, env: any) => {
