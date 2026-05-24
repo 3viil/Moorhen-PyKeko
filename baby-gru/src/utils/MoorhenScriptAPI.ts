@@ -23,8 +23,6 @@ import { executePymolScript } from "./MoorhenPymolTranslator";
 
 export class MoorhenScriptApi  {
 
-    molecules: moorhen.Molecule[];
-    maps: moorhen.Map[];
     commandCentre: React.RefObject<moorhen.CommandCentre>;
     glRef: React.RefObject<webGL.MGWebGL>;
     store: Store;
@@ -32,8 +30,22 @@ export class MoorhenScriptApi  {
     constructor(commandCentre: React.RefObject<moorhen.CommandCentre> = null, store: Store = null, molecules: moorhen.Molecule[] = null, maps: moorhen.Map[] = null) {
         this.store = store;
         this.commandCentre = commandCentre;
-        this.molecules = molecules ?? (store ? store.getState().molecules.moleculeList : []);
-        this.maps = maps ?? (store ? store.getState().maps : []);
+        // NB: store-backed reads are live (see buildEnv getters); the cached
+        // fields are only used when callers explicitly passed an override list.
+        this._moleculesOverride = molecules ?? null;
+        this._mapsOverride = maps ?? null;
+    }
+
+    private _moleculesOverride: moorhen.Molecule[] | null;
+    private _mapsOverride: moorhen.Map[] | null;
+
+    get molecules(): moorhen.Molecule[] {
+        if (this._moleculesOverride) return this._moleculesOverride;
+        return this.store ? (this.store.getState() as any).molecules?.moleculeList ?? [] : [];
+    }
+    get maps(): moorhen.Map[] {
+        if (this._mapsOverride) return this._mapsOverride;
+        return this.store ? (this.store.getState() as any).maps ?? [] : [];
     }
 
     doRigidBodyFit = async (molNo: number, cidsString: string, mapNo: number) => {
@@ -198,11 +210,14 @@ export class MoorhenScriptApi  {
     /**
      * Execute a JavaScript script string against the Moorhen env.
      * The env is exposed via a `with()` block so users can write
-     * `setOrigin([0,0,0])` instead of `env.setOrigin(...)`.
+     * `setOrigin([0,0,0])` instead of `env.setOrigin(...)`. The user code
+     * may use top-level await — we wrap it in an async function so it
+     * actually awaits.
      */
-    exe(src: string) {
+    async exe(src: string): Promise<unknown> {
         const env = this.buildEnv();
-        (new Function("with(this) { " + src + "}")).call(env);
+        const fn = new Function("with (this) { return (async () => { " + src + " })(); }");
+        return fn.call(env);
     }
 
     /**

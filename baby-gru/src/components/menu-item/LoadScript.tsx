@@ -21,7 +21,7 @@ export const LoadScript = () => {
                 if (isPymol) {
                     await scriptApi.exePymol(code);
                 } else {
-                    scriptApi.exe(code);
+                    await scriptApi.exe(code);
                 }
             } catch (err) {
                 console.error(err);

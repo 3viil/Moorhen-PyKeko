@@ -10,7 +10,7 @@
 import { MoorhenMolecule } from "../utils/MoorhenMolecule";
 import { MoorhenMap } from "../utils/MoorhenMap";
 import { MoorhenScriptApi } from "../utils/MoorhenScriptAPI";
-import { addMolecule } from "../store/moleculesSlice";
+import { addMolecule, showMolecule } from "../store/moleculesSlice";
 import { addMap } from "../store/mapsSlice";
 import { setActiveMap } from "../store/generalStatesSlice";
 import { triggerUpdate } from "../store/moleculeMapUpdateSlice";
@@ -41,8 +41,16 @@ export function createControlApi(ctx: Ctx) {
   const molByNo = (molNo?: number) => {
     const mols = getMolecules();
     if (molNo === undefined || molNo === null) {
+      // Don't trust a stale active-molecule ref: only honour it if the
+      // referenced molNo is still in the live list. Otherwise fall back to
+      // the most recently loaded molecule. Returning a dangling MoorhenMolecule
+      // here previously caused "Cannot pass deleted object" when downstream
+      // code called gemmiStructure methods on it.
       const active = store.getState().glRef?.activeMolecule;
-      if (active && active.molNo !== undefined) return mols.find((m) => m.molNo === active.molNo) || active;
+      if (active && active.molNo !== undefined) {
+        const live = mols.find((m) => m.molNo === active.molNo);
+        if (live) return live;
+      }
       return mols[mols.length - 1];
     }
     return mols.find((m) => m.molNo === molNo);
@@ -92,6 +100,9 @@ export function createControlApi(ctx: Ctx) {
       await mol.loadToCootFromString(pdbString, name);
       await mol.fetchIfDirtyAndDraw("CBs");
       dispatch(addMolecule(mol));
+      // Keyboard shortcuts (space-jump, drag-atoms) and the eye-icon read
+      // state.molecules.visibleMolecules; addMolecule alone doesn't flip it.
+      dispatch(showMolecule(mol));
       await mol.centreOn("/*/*/*/*", false, true);
       repaint();
       return { molNo: mol.molNo, name: mol.name, atomCount: await liveAtomCount(mol) };
@@ -102,6 +113,9 @@ export function createControlApi(ctx: Ctx) {
       await mol.loadToCootFromURL(url, name);
       await mol.fetchIfDirtyAndDraw("CBs");
       dispatch(addMolecule(mol));
+      // Keyboard shortcuts (space-jump, drag-atoms) and the eye-icon read
+      // state.molecules.visibleMolecules; addMolecule alone doesn't flip it.
+      dispatch(showMolecule(mol));
       await mol.centreOn("/*/*/*/*", false, true);
       repaint();
       return { molNo: mol.molNo, name: mol.name, atomCount: await liveAtomCount(mol) };
@@ -228,7 +242,7 @@ export function createControlApi(ctx: Ctx) {
     },
     async runJs(script: string) {
       const api = new MoorhenScriptApi(commandCentre, store);
-      api.exe(script);
+      await api.exe(script);
       repaint();
       return { ok: true };
     },

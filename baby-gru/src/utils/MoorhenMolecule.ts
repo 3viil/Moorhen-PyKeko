@@ -2646,10 +2646,14 @@ export class MoorhenMolecule {
     ncsGhostReps: MoleculeRepresentation[] = [];
 
     /**
-     * Draw translucent NCS ghost overlays of `masterChain` at the position of each
-     * NCS-related copy chain. SSM-derived matrices are computed in C++; meshes are
-     * generated for the master chain and rendered N additional times with each
-     * inverse matrix as a per-buffer transform.
+     * Draw translucent NCS ghost overlays *on the master chain*: for each
+     * NCS-related copy chain, render that copy's bond mesh transformed onto
+     * the master via the SSM matrix copy→master (so all copies stack visually
+     * on top of the master chain, revealing where they agree/disagree). This
+     * matches Coot's "NCS ghost" convention.
+     *
+     * Each ghost is colour-cycled (orange/green/blue/pink/yellow/purple) and
+     * translucent (`opacity`, default 0.4). Use `clearNcsGhosts()` to remove.
      */
     async drawNcsGhosts(masterChain: string, opacity = 0.4): Promise<number> {
         this.clearNcsGhosts();

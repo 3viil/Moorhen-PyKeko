@@ -50,7 +50,7 @@ export const MoorhenScriptModal = () => {
             if (mode === "pymol") {
                 await scriptApi.exePymol(code);
             } else {
-                scriptApi.exe(code);
+                await scriptApi.exe(code);
             }
         } catch (err) {
             console.error(err);

@@ -390,6 +390,9 @@ export const NcsGhostsSettingsPanel = (props: { molecule: moorhen.Molecule }) =>
 
     const redraw = async () => {
         if (busy) return;
+        // Skip the initial pre-chain-lookup render — drawNcsGhosts("") is a no-op
+        // but would otherwise produce a "no NCS copies for chain ''" toast.
+        if (enabled && !masterChain) return;
         setBusy(true);
         try {
             if (enabled && masterChain) {
@@ -402,7 +405,15 @@ export const NcsGhostsSettingsPanel = (props: { molecule: moorhen.Molecule }) =>
         }
     };
 
-    useEffect(() => { redraw(); }, [enabled, masterChain, opacity]);
+    useEffect(() => { redraw().catch(err => console.warn("NCS ghosts redraw failed:", err)); },
+        [enabled, masterChain, opacity]);
+
+    // Clean up ghost reps when the card unmounts — otherwise stale meshes
+    // linger in the scene after the user collapses or removes the card.
+    useEffect(() => {
+        const mol = props.molecule;
+        return () => { try { mol.clearNcsGhosts(); } catch {} };
+    }, []);
 
     return (
         <MoorhenStack gap={"0.5rem"} addMargin>

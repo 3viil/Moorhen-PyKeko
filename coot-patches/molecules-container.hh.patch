@@ -1,8 +1,26 @@
 diff --git a/api/molecules-container.hh b/api/molecules-container.hh
-index 4dc1b29ea..7853a19b2 100644
+index eef3a9332..7853a19b2 100644
 --- a/api/molecules-container.hh
 +++ b/api/molecules-container.hh
-@@ -2291,6 +2291,12 @@ public:
+@@ -1560,6 +1560,17 @@ public:
+    superpose_results_t SSM_superpose(int imol_ref, const std::string &chain_id_ref,
+                                      int imol_mov, const std::string &chain_id_mov);
+ 
++   //! Compute SSM superposition matrix that maps `copy_chain` onto `master_chain`
++   //! within the same molecule, WITHOUT moving any atoms. Used for NCS ghost overlays.
++   //!
++   //! @param imol the molecule index
++   //! @param master_chain the chain ID to align onto
++   //! @param copy_chain the chain ID whose transformation matrix to compute
++   //! @return 16 floats as space-separated string (4x4 matrix, row-major), or empty string on failure.
++   std::string get_ncs_ghost_matrix(int imol,
++                                     const std::string &master_chain,
++                                     const std::string &copy_chain);
++
+    //! Superpose using LSQ - setup the matches
+    //!
+    //! @param chain_id_ref the chain ID for the reference chain
+@@ -2280,6 +2291,12 @@ public:
     //! @return the number of waters added on a success, -1 on failure.
     int add_waters(int imol_model, int imol_map);
  

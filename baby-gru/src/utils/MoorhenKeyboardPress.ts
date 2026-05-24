@@ -295,7 +295,8 @@ export const moorhenKeyPress = (
                     variant: "info"
                 }))
             }
-        })()
+        })().catch(err => console.warn("[g] toggle_ncs_ghosts failed:", err))
+        return false
     }
 
     else if (action === 'go_to_blob' && activeMap && !viewOnly) {
@@ -596,14 +597,25 @@ export const moorhenKeyPress = (
     else if (action === 'add_water' && activeMap && !viewOnly && molecules.length > 0) {
         // Single water at the view crosshairs + single-residue refine.
         // glRef.origin is the negated atom coordinate of the view centre.
-        const targetMolecule = hoveredAtom.molecule ?? molecules[0]
         const [ox, oy, oz] = originState
         ;(async () => {
+            // Prefer the molecule under the cursor / at the view centre, so
+            // multi-molecule scenes drop water in the right place rather than
+            // blindly using molecules[0].
+            let targetMolecule: moorhen.Molecule | undefined
+            if (hoveredAtom.molecule) {
+                targetMolecule = hoveredAtom.molecule
+            } else {
+                const [centreMol] = await getCentreAtom(molecules, commandCentre, store)
+                targetMolecule = centreMol ?? molecules[0]
+            }
+            if (!targetMolecule) return
             const cid = await targetMolecule.addWaterAtPosition(-ox, -oy, -oz)
             if (!cid) {
-                if (showShortcutToast) dispatch(enqueueSnackbar({ message:"Add water failed",  variant: "warning"}))
+                if (showShortcutToast) dispatch(enqueueSnackbar({ message: "Add water failed", variant: "warning" }))
                 return
             }
+            let refined = true
             try {
                 await commandCentre.current.cootCommand({
                     returnType: "status",
@@ -611,10 +623,13 @@ export const moorhenKeyPress = (
                     commandArgs: [targetMolecule.molNo, cid, "SINGLE", 4000],
                     changesMolecules: [targetMolecule.molNo],
                 }, true)
-            } catch (e) { console.log(e) }
+            } catch (e) { refined = false; console.warn("refine after add_water failed:", e) }
             apresEdit(targetMolecule, glRef, dispatch)
-            if (showShortcutToast) dispatch(enqueueSnackbar({ message:`Added water ${cid} + refined`,  variant: "info"}))
-        })()
+            if (showShortcutToast) dispatch(enqueueSnackbar({
+                message: refined ? `Added water ${cid} + refined` : `Added water ${cid} (refine failed)`,
+                variant: refined ? "info" : "warning",
+            }))
+        })().catch(err => console.warn("[w] add_water failed:", err))
         return false
     }
 
@@ -713,7 +728,11 @@ export const moorhenKeyPress = (
                 if (showShortcutToast) dispatch(enqueueSnackbar({ message: "No molecule loaded", variant: "warning" }))
                 return
             }
-            const cacheKey = `${targetMolecule.molNo}|${diffMap.molNo}`
+            // Include the edit-history length so caches invalidate when the
+            // user refines / builds / rebuilds — otherwise we keep returning
+            // stale peak positions from before the edit.
+            const editVer = commandCentre.current?.history?.getEntriesForMolNo?.(targetMolecule.molNo)?.length ?? 0
+            const cacheKey = `${targetMolecule.molNo}|${diffMap.molNo}|${editVer}`
             if (cacheKey !== diffPeakCacheKey || diffPeakCache.length === 0) {
                 const resp = await commandCentre.current.cootCommand({
                     returnType: "interesting_places_data",
@@ -751,7 +770,8 @@ export const moorhenKeyPress = (
                 return
             }
             const mapMolNo = activeMap?.molNo ?? -1
-            const cacheKey = `${targetMolecule.molNo}|${mapMolNo}`
+            const editVer = commandCentre.current?.history?.getEntriesForMolNo?.(targetMolecule.molNo)?.length ?? 0
+            const cacheKey = `${targetMolecule.molNo}|${mapMolNo}|${editVer}`
             if (cacheKey !== issueCacheKey || issueCache.length === 0) {
                 const wrap = (cmd: string, args: any[]) => commandCentre.current.cootCommand({
                     returnType: "validation_data",
@@ -810,7 +830,7 @@ export const moorhenKeyPress = (
             }
             issueCycleIdx = (issueCycleIdx + step + issueCache.length) % issueCache.length
             const issue = issueCache[issueCycleIdx]
-            targetMolecule.centreOn(issue.cid, true, true)
+            await targetMolecule.centreOn(issue.cid, true, true)
             if (showShortcutToast) dispatch(enqueueSnackbar({
                 message: `Issue ${issueCycleIdx + 1}/${issueCache.length} (${issue.type}): ${issue.cid} ${issue.label}`,
                 variant: "info",
