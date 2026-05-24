@@ -354,3 +354,134 @@ A safe sequencing that never breaks the current dev/prod:
    non-signing parts are already known to work.
 6. Merge the branch back. The dist variant is now an option but doesn't change
    the default workflow.
+
+---
+
+## 8. Distribution via GitHub Releases
+
+For a small audience (a few collaborators) on the dev box's owner, GitHub
+Releases is the right host: free, no size pressure (2 GB per asset, unlimited
+release storage that doesn't count against repo size), public URL, version
+history. The repo is already on GitHub at
+[3viil/MoorHenMH](https://github.com/3viil/MoorHenMH).
+
+### 8.1 Manual release (recommended for v1)
+
+After a successful local `MOORHEN_VARIANT=dist npm run make`:
+
+```bash
+# Optional: tag the Moorhen-dev tree at the SHA that produced this build
+git -C ~/Moorhen-dev tag v0.1-dist
+git -C ~/Moorhen-dev push origin v0.1-dist
+
+# Upload the DMG
+gh release create v0.1-dist \
+  ~/MoorhenWrapper/out/make/Moorhen-1.0.0-arm64.dmg \
+  --repo 3viil/MoorHenMH \
+  --title "Moorhen v0.1 (unsigned macOS Tahoe build)" \
+  --notes-file ~/Moorhen-dev/docs/release-notes-v0.1.md
+```
+
+This takes about 30 seconds once the DMG exists.
+
+### 8.2 Release-notes template (so install actually works for recipients)
+
+The recipient downloads a `.dmg` via browser → macOS attaches
+`com.apple.quarantine` → Gatekeeper refuses to launch. **This is true for any
+unsigned app downloaded from the internet, not just Moorhen.** The release
+notes need to tell them how to bypass it. Suggested boilerplate:
+
+```markdown
+## Install (macOS 15 Tahoe, Apple Silicon)
+
+1. Download Moorhen-1.0.0-arm64.dmg.
+2. Open it and drag Moorhen.app into /Applications.
+3. **One-time** — bypass Gatekeeper for this unsigned build:
+
+   Open Terminal, paste, hit return:
+
+       xattr -dr com.apple.quarantine /Applications/Moorhen.app
+
+   (Alternative: in Finder, right-click Moorhen.app → Open → confirm. This
+   works for the first launch only.)
+
+4. Launch from /Applications or Spotlight as normal.
+
+## What's in this build
+
+- Coot-style keyboard shortcuts (w, p, n, d, l, o, g, …)
+- PyMOL-style scripting in the Interactive Scripting modal
+- NCS ghost overlays
+- … (etc, summarised from README-MH)
+
+This build is unsigned and not notarised. macOS will warn that the developer
+cannot be verified — that is expected.
+```
+
+Stashing the boilerplate under `~/Moorhen-dev/docs/release-notes-v0.1.md` and
+just bumping the version on each release saves rewriting it.
+
+### 8.3 `curl` install (skips the quarantine dance)
+
+Users who download via `curl` or `gh release download` don't pick up the
+quarantine attribute — those tools don't set it. So the **power-user install**
+is:
+
+```bash
+gh release download v0.1-dist --repo 3viil/MoorHenMH --pattern '*.dmg'
+hdiutil attach Moorhen-1.0.0-arm64.dmg
+cp -R /Volumes/Moorhen/Moorhen.app /Applications/
+hdiutil detach /Volumes/Moorhen
+```
+
+No `xattr` step needed. Worth mentioning in release notes for collaborators
+who live in a terminal.
+
+### 8.4 GitHub Actions (later, when manual gets annoying)
+
+A `.github/workflows/release.yml` that builds the DMG on tag push, uploaded to
+the matching release. Skeleton:
+
+```yaml
+on:
+  push:
+    tags: ["v*-dist"]
+
+jobs:
+  build:
+    runs-on: macos-15  # Tahoe
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - uses: mymindstorm/setup-emsdk@v14
+        with: { version: 3.1.50 }  # match TARGET_EMSDK_VERSION
+      - run: |
+          # Build CCP4 WASM (~1hr first time, cacheable)
+          cd CCP4_WASM_BUILD && ./build.sh
+      - run: |
+          cd baby-gru && npm ci && npm run build
+      - run: |
+          cd ../MoorhenWrapper
+          MOORHEN_VARIANT=dist npm ci
+          MOORHEN_VARIANT=dist npm run make
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: MoorhenWrapper/out/make/*.dmg
+```
+
+The CCP4 WASM step is the painful one (~1 hr if uncached). With `actions/cache`
+keyed on `CCP4_WASM_BUILD/VERSIONS`, subsequent runs drop to ~5 min. Not worth
+setting up until manual releases start hurting. **Caveat**: this requires
+MoorhenWrapper to live in the same repo (or a submodule of) MoorHenMH so the
+checkout sees both. Today MoorhenWrapper is a separate repo on the dev box —
+either bring it in as a submodule, or run two workflows that coordinate via
+release artifacts.
+
+### 8.5 Honesty about size
+
+The DMG goes on the release. GitHub's free tier handles this fine for a few
+downloads/month. If the project ever sees real distribution traffic, GitHub
+Releases bandwidth is still free but is rate-limited per-IP; for that case
+host on S3 or Cloudflare R2 and link from the release notes. Not a v1 problem.
