@@ -41,7 +41,8 @@ export type SelNode =
 
 type Token = {
     type: "kw" | "ident" | "number" | "punct" | "string";
-    value: string;
+    value: string;       // for kw: canonical lowercase; for ident: original case
+    original?: string;   // original-case source (only set when distinct from value)
     pos: number;
 };
 
@@ -165,9 +166,16 @@ const tokenize = (src: string): Token[] => {
             if (ALIASES[lower]) resolved = ALIASES[lower];
             else if (lower.endsWith(".") && ALIASES[lower]) resolved = ALIASES[lower];
             const isKw = KEYWORDS.has(resolved) || resolved.startsWith("polymer.") || resolved === "polymer.protein" || resolved === "polymer.nucleic";
-            // Keywords get their canonical lowercase form; idents keep original case
-            // (PyMOL chain names are case-sensitive: "chain A" != "chain a").
-            toks.push({ type: isKw ? "kw" : "ident", value: isKw ? resolved : original, pos: i });
+            // Keywords get canonical lowercase form; idents keep original case.
+            // For keywords that COULD also be a chain id (single-letter b/c/h/i/n/q/r/s),
+            // we still store `original` so `parseStrList` can restore case in
+            // ident-list contexts (e.g. chain A+B+C where B clashes with the b-factor kw).
+            toks.push({
+                type: isKw ? "kw" : "ident",
+                value: isKw ? resolved : original,
+                original: isKw && original !== resolved ? original : undefined,
+                pos: i,
+            });
             i = j;
             continue;
         }
@@ -351,10 +359,13 @@ class Parser {
         const out: string[] = [];
         const first = this.eat();
         if (!first) throw new Error("expected identifier");
-        out.push(first.value);
+        // In ident-list context (chain/resn/name/elem/segi argument), prefer the
+        // original-case spelling: a chain id "B" tokenizes as keyword "b" but
+        // we want "B" in the AST.
+        out.push(first.original ?? first.value);
         while (this.match("+")) {
             const next = this.eat();
-            if (next) out.push(next.value);
+            if (next) out.push(next.original ?? next.value);
         }
         return out;
     }
