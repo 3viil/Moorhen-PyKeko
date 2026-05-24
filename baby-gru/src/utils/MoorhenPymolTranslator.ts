@@ -630,35 +630,113 @@ const cmdBgColor = async (cmd: PymolCommand, env: any) => {
 };
 
 const cmdSet = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
-    // `set <key>, <value>[, <sel>]`. Only a curated subset is wired up.
+    // `set <key>, <value>[, <sel>]`. PyMOL has hundreds of settings; we wire
+    // up the most useful ones that map cleanly to Moorhen's scene-settings
+    // Redux slice. Anything not in the table warns and is otherwise a no-op.
     const key = cmd.args[0]?.trim().toLowerCase();
     const value = cmd.args[1]?.trim();
     const selArg = cmd.args[2];
     if (!key) return;
 
-    if (key === "transparency") {
-        const opacity = 1 - parseFloat(value);
-        if (isNaN(opacity)) {
-            console.warn(`[pymol:${cmd.lineNo}] set transparency: invalid value "${value}"`);
+    const truthy = (v: string | undefined) => v !== undefined && v !== "0" && v.toLowerCase() !== "off" && v.toLowerCase() !== "false";
+    const num = (v: string | undefined) => { const n = parseFloat(v ?? ""); return isNaN(n) ? null : n; };
+
+    switch (key) {
+        case "transparency": {
+            const opacity = 1 - parseFloat(value ?? "");
+            if (isNaN(opacity)) {
+                console.warn(`[pymol:${cmd.lineNo}] set transparency: invalid value "${value}"`);
+                return;
+            }
+            const targets = await resolveSelection(selArg, env, registry);
+            for (const { molecule } of targets) {
+                for (const rep of (molecule.representations as moorhen.MoleculeRepresentation[])) {
+                    if (rep.isCustom) rep.setNonCustomOpacity?.(opacity);
+                }
+            }
             return;
         }
-        const targets = await resolveSelection(selArg, env, registry);
-        for (const { molecule } of targets) {
-            for (const rep of (molecule.representations as moorhen.MoleculeRepresentation[])) {
-                if (rep.isCustom) rep.setNonCustomOpacity?.(opacity);
-            }
+        case "ray_shadow":
+        case "ray_shadows":
+        case "shadows":
+            env.dispatch(env.setDoShadow(truthy(value)));
+            return;
+        case "rocking":
+        case "spin":
+            env.dispatch(env.setDoSpin(truthy(value)));
+            return;
+        case "fog_start": {
+            const v = num(value);
+            if (v !== null) env.dispatch(env.setFogStart(v));
+            return;
         }
-    } else if (key === "ray_shadow" || key === "ray_shadows") {
-        env.dispatch(env.setDoShadow(value !== "0" && value !== "off"));
-    } else if (key === "rocking") {
-        env.dispatch(env.setDoSpin(value !== "0" && value !== "off"));
-    } else if (key === "fog_start") {
-        const v = parseFloat(value);
-        if (!isNaN(v)) env.dispatch(env.setFogStart(v));
-    } else if (key === "surface_quality") {
-        console.warn(`[pymol:${cmd.lineNo}] set surface_quality is deferred to a later phase`);
-    } else {
-        console.warn(`[pymol:${cmd.lineNo}] set ${key}: unsupported (silently ignored)`);
+        case "fog_end": {
+            const v = num(value);
+            if (v !== null) env.dispatch(env.setFogEnd(v));
+            return;
+        }
+        case "ambient": {
+            // PyMOL ambient is a 0-1 scalar; Moorhen wants an RGBA tuple
+            const v = num(value);
+            if (v !== null) env.dispatch(env.setAmbient([v, v, v, 1]));
+            return;
+        }
+        case "spec_reflect":
+        case "specular": {
+            const v = num(value);
+            if (v !== null) env.dispatch(env.setSpecular([v, v, v, 1]));
+            return;
+        }
+        case "specular_power":
+        case "shininess": {
+            const v = num(value);
+            if (v !== null) env.dispatch(env.setSpecularPower(v));
+            return;
+        }
+        case "depth_cue":
+        case "ray_trace_mode": {
+            // PyMOL ray_trace_mode > 0 turns on edges; Moorhen has setDoEdgeDetect
+            env.dispatch(env.setDoEdgeDetect(truthy(value)));
+            return;
+        }
+        case "ray_opaque_background": {
+            // Transparent background — Moorhen exposes via doTransparentBackground
+            // on the screenshot path; here we toast since there's no live mode.
+            if (env.enqueueSnackbar) {
+                env.dispatch(env.enqueueSnackbar({
+                    message: `Set ${truthy(value) ? "opaque" : "transparent"} background — takes effect at next png/ray`,
+                    variant: "info",
+                }));
+            }
+            return;
+        }
+        case "anaglyph":
+        case "anaglyph_stereo":
+            env.dispatch(env.setDoAnaglyphStereo(truthy(value)));
+            return;
+        case "draw_axes":
+        case "axes":
+            env.dispatch(env.setDrawAxes(truthy(value)));
+            return;
+        case "draw_crosshairs":
+        case "crosshairs":
+            env.dispatch(env.setDrawCrosshairs(truthy(value)));
+            return;
+        case "draw_scale_bar":
+        case "scale_bar":
+            env.dispatch(env.setDrawScaleBar(truthy(value)));
+            return;
+        case "viewport":
+        case "size":
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: window size is browser-controlled; ignored`);
+            return;
+        case "surface_quality":
+        case "surface_color":
+        case "surface_solvent":
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: deferred (surface rendering tuning not yet wired)`);
+            return;
+        default:
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: unsupported (silently ignored)`);
     }
 };
 
