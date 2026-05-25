@@ -1,15 +1,15 @@
-# MoorHenMH
+# Moorhen-PyKeko
 
 > **A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with NCS ghost overlays, a PyMOL-style scripting modal, MCP control surface for Claude, validation/peak/ligand cyclers, Coot 0.9.x-style keyboard shortcuts, and more.
 >
 > ## ⬇️ Install (macOS Tahoe, Apple Silicon)
 >
-> **[→ Download the latest DMG release](https://github.com/3viil/MoorHenMH/releases/latest)** · **[→ Full install guide](docs/install-mac.md)**
+> **[→ Download the latest DMG release](https://github.com/3viil/Moorhen-PyKeko/releases/latest)** · **[→ Full install guide](docs/install-mac.md)**
 >
-> Quick install: download `Moorhen.dmg`, drag `Moorhen.app` to `/Applications`, then run once in Terminal:
+> Quick install: download `PyKeko.dmg`, drag `PyKeko.app` to `/Applications`, then run once in Terminal:
 >
 > ```bash
-> xattr -dr com.apple.quarantine /Applications/Moorhen.app
+> xattr -dr com.apple.quarantine /Applications/PyKeko.app
 > ```
 >
 > ## 📖 Documentation
@@ -17,8 +17,8 @@
 > - **Headline features and shortcuts**: [README-MH.md](README-MH.md)
 > - **PyMOL command reference**: [docs/pymol-translator.md](docs/pymol-translator.md)
 > - **Full project setup & build-from-source**: [PROJECT-NOTES.md](PROJECT-NOTES.md)
-> - **Desktop wrapper (Electron)**: [3viil/MoorhenWrapper](https://github.com/3viil/MoorhenWrapper)
-> - **Claude / MCP integration**: [3viil/MoorhenMCP](https://github.com/3viil/MoorhenMCP)
+> - **Desktop wrapper (Electron)**: [3viil/PyKeko](https://github.com/3viil/PyKeko)
+> - **Claude / MCP integration**: [3viil/PyKekoMCP](https://github.com/3viil/PyKekoMCP)
 
 ---
 

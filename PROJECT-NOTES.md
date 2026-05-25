@@ -10,15 +10,15 @@ Two GitHub repos backing the local workspace:
 
 | Repo | Purpose | Local Path |
 |------|---------|-----------|
-| [3viil/MoorHenMH](https://github.com/3viil/MoorHenMH) | Fork of moorhen-coot/Moorhen with customizations | `~/Moorhen` (production), `~/Moorhen-dev` (dev) |
-| [3viil/MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) | Electron wrapper around the vite dev server; one repo builds both the prod and dev apps | `~/MoorhenWrapper` |
+| [3viil/Moorhen-PyKeko](https://github.com/3viil/Moorhen-PyKeko) | Fork of moorhen-coot/Moorhen with customizations | `~/Moorhen` (production), `~/Moorhen-dev` (dev) |
+| [3viil/PyKeko](https://github.com/3viil/PyKeko) | Electron wrapper around the vite dev server; one repo builds both the prod and dev apps | `~/PyKeko` |
 
 Two apps installed in `/Applications`:
 
 | App | Source | Port |
 |-----|--------|------|
-| `MoorhenLocal.app` | `~/Moorhen/baby-gru/` (production) | 5173 |
-| `MoorhenDev.app` | `~/Moorhen-dev/baby-gru/` (development) | 5174 |
+| `PyKeko.app` | `~/Moorhen/baby-gru/` (production) | 5173 |
+| `PyKekoDev.app` | `~/Moorhen-dev/baby-gru/` (development) | 5174 |
 
 ---
 
@@ -40,7 +40,7 @@ The biggest features added on top of upstream Moorhen. Each has a full implement
 |---------|--------------|-------------|
 | **PyMOL command translator** | JS / PyMOL mode toggle in Interactive Scripting; runs `.pml` scripts against Moorhen with the full PyMOL selection algebra | Edit menu → Interactive scripting…, or `.pml` via Load and execute script… |
 | **NCS Ghosts** | Translucent copies of NCS-related chains overlaid on a chosen master, computed in C++ via SSM | `g` shortcut, or the NCS Ghosts accordion in the molecule card |
-| **Claude / MoorhenMCP** | MCP server drives the live app — load, navigate, refine, screenshot, plus `runPymol`/`runJs` for headless scripting | `claude mcp add moorhen -- node ~/MoorhenMCP/dist/server.js` |
+| **Claude / PyKekoMCP** | MCP server drives the live app — load, navigate, refine, screenshot, plus `runPymol`/`runJs` for headless scripting | `claude mcp add moorhen -- node ~/PyKekoMCP/dist/server.js` |
 | **Validation issue cycler** | Merged outlier list (Rama + rotamer + density-fit) with type tags | `n` / `Shift+N` |
 | **Difference-map peak cycler** | Walk signed Fo–Fc peaks above ±3σ | `p` / `Shift+P` |
 | **NCS jump** | Cycle to the same residue number on the next NCS-related chain | `o` / `Shift+O` |
@@ -53,7 +53,7 @@ After the headline features, the rest of this document covers the smaller Coot-s
 
 ---
 
-## Customizations in MoorHenMH (fork of moorhen-coot/Moorhen)
+## Customizations in Moorhen-PyKeko (fork of moorhen-coot/Moorhen)
 
 ### Files modified
 
@@ -210,7 +210,7 @@ git config --global user.email "your-username@users.noreply.github.com"
 ### 3. Clone the fork
 
 ```bash
-git clone https://github.com/3viil/MoorHenMH.git ~/Moorhen
+git clone https://github.com/3viil/Moorhen-PyKeko.git ~/Moorhen
 cd ~/Moorhen
 git remote add upstream https://github.com/moorhen-coot/Moorhen.git
 ```
@@ -250,18 +250,18 @@ npm install
 
 ```bash
 cd ~
-git clone https://github.com/3viil/MoorhenWrapper.git
-cd MoorhenWrapper
+git clone https://github.com/3viil/PyKeko.git
+cd PyKeko
 npm install
 npx electron-forge package
-xattr -rc out/MoorhenLocal-darwin-arm64/MoorhenLocal.app
-cp -r out/MoorhenLocal-darwin-arm64/MoorhenLocal.app /Applications/
+xattr -rc out/PyKeko-darwin-arm64/PyKeko.app
+cp -r out/PyKeko-darwin-arm64/PyKeko.app /Applications/
 ```
 
 ### 7. Optional: dev workspace
 
 ```bash
-git clone https://github.com/3viil/MoorHenMH.git ~/Moorhen-dev
+git clone https://github.com/3viil/Moorhen-PyKeko.git ~/Moorhen-dev
 cd ~/Moorhen-dev
 git remote add upstream https://github.com/moorhen-coot/Moorhen.git
 cd baby-gru && npm install
@@ -272,15 +272,15 @@ cp -r ~/Moorhen/baby-gru/public/MoorhenAssets ~/Moorhen-dev/baby-gru/public/
 cp -r ~/Moorhen/baby-gru/src/LhasaReact      ~/Moorhen-dev/baby-gru/src/
 
 # Build the dev desktop app from the SAME wrapper repo (no separate copy needed):
-cd ~/MoorhenWrapper
+cd ~/PyKeko
 npm run package:dev
-xattr -rc out/MoorhenDev-darwin-arm64/MoorhenDev.app
-cp -r out/MoorhenDev-darwin-arm64/MoorhenDev.app /Applications/
+xattr -rc out/PyKekoDev-darwin-arm64/PyKekoDev.app
+cp -r out/PyKekoDev-darwin-arm64/PyKekoDev.app /Applications/
 ```
 
 > The wrapper bakes the variant (target tree + port) into `variant.json` at package
-> time: `npm run package` → MoorhenLocal (Moorhen, 5173) and `npm run package:dev`
-> → MoorhenDev (Moorhen-dev, 5174), both from this one repo.
+> time: `npm run package` → PyKeko (Moorhen, 5173) and `npm run package:dev`
+> → PyKekoDev (Moorhen-dev, 5174), both from this one repo.
 
 ---
 
@@ -288,13 +288,13 @@ cp -r out/MoorhenDev-darwin-arm64/MoorhenDev.app /Applications/
 
 ### Production
 ```
-open /Applications/MoorhenLocal.app
+open /Applications/PyKeko.app
 ```
 - Uses `~/Moorhen/baby-gru/` (your stable, working customizations)
 
 ### Development
 ```
-open /Applications/MoorhenDev.app
+open /Applications/PyKekoDev.app
 ```
 - Uses `~/Moorhen-dev/baby-gru/` (a separate clone for experimentation)
 - Runs on port 5174 so it doesn't conflict with the production version
@@ -333,7 +333,7 @@ git pull origin main
 For ongoing customizations:
 
 1. Make changes in `~/Moorhen-dev/baby-gru/src/`
-2. The MoorhenDev app picks them up on launch (vite serves source files directly with HMR)
+2. The PyKekoDev app picks them up on launch (vite serves source files directly with HMR)
 3. When happy with changes, commit and push to GitHub:
    ```bash
    cd ~/Moorhen-dev
@@ -466,19 +466,19 @@ Three layers, each in its own repo:
 |-------|----------|------|
 | Renderer facade | `baby-gru/src/api/MoorhenControlApi.ts` (this fork) | `window.MoorhenControlApi.load/navigate/refine/...` — the actual scripted operations against the Redux store + `commandCentre` |
 | Renderer bridge | `baby-gru/src/api/MoorhenControlBridge.tsx` (this fork) | React component mounted by `MainContainer`; listens to wrapper IPC (`ipcRenderer.on('moorhen-control:invoke')`), dispatches to the facade, responds via `moorhen-control:reply`. After scene-changing ops also dispatches `setRequestDrawScene(true)` because headless control has no mouse events to trigger a repaint. |
-| Electron control server | `main.js` in [MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) | Token-authenticated HTTP server on `127.0.0.1:<random>`, writes `{port, token, vitePort, title, pid}` to `~/.moorhen-mcp/control-<vitePort>.json`. Forwards POSTed `{token, verb, args}` to the renderer via IPC. Serves `screenshot` directly via `webContents.capturePage()`. |
-| Stdio MCP server | [MoorhenMCP](https://github.com/3viil/MoorhenMCP) (separate repo) | `dist/server.js` is the actual MCP endpoint Claude talks to. Resolves the control file (default port 5173 = MoorhenLocal, override with `MOORHEN_VITE_PORT=5174` for MoorhenDev), POSTs to the wrapper, returns text or image content. |
+| Electron control server | `main.js` in [PyKeko](https://github.com/3viil/PyKeko) | Token-authenticated HTTP server on `127.0.0.1:<random>`, writes `{port, token, vitePort, title, pid}` to `~/.moorhen-mcp/control-<vitePort>.json`. Forwards POSTed `{token, verb, args}` to the renderer via IPC. Serves `screenshot` directly via `webContents.capturePage()`. |
+| Stdio MCP server | [PyKekoMCP](https://github.com/3viil/PyKekoMCP) (separate repo) | `dist/server.js` is the actual MCP endpoint Claude talks to. Resolves the control file (default port 5173 = PyKeko, override with `MOORHEN_VITE_PORT=5174` for PyKekoDev), POSTs to the wrapper, returns text or image content. |
 
 Registration:
 ```bash
-claude mcp add moorhen -- node /Users/mhilgers/MoorhenMCP/dist/server.js
+claude mcp add moorhen -- node /Users/mhilgers/PyKekoMCP/dist/server.js
 ```
 
 Available tools (14): `moorhen_get_state`, `load_coordinates`, `load_map`, `go_to_residue`, `refine`, `auto_fit_rotamer`, `flip_peptide`, `add_terminal_residue`, `add_waters`, `delete`, `set_active_map`, `undo`, `redo`, `screenshot`.
 
-**To add a new tool**: extend `MoorhenControlApi` (renderer) → add a case in `MoorhenControlBridge`'s verb switch → expose it as a tool in `MoorhenMCP/src/server.ts`. The wrapper layer is generic and forwards anything.
+**To add a new tool**: extend `MoorhenControlApi` (renderer) → add a case in `MoorhenControlBridge`'s verb switch → expose it as a tool in `PyKekoMCP/src/server.ts`. The wrapper layer is generic and forwards anything.
 
-**Why a control file instead of a known port**: each Moorhen app picks a random port to avoid collisions and writes both the port and a per-launch token. The MCP server reads that file to find a live app — supports running both MoorhenLocal and MoorhenDev simultaneously (different vite ports → different control files).
+**Why a control file instead of a known port**: each Moorhen app picks a random port to avoid collisions and writes both the port and a per-launch token. The MCP server reads that file to find a live app — supports running both PyKeko and PyKekoDev simultaneously (different vite ports → different control files).
 
 ### `n` — Next validation issue (merged)
 
@@ -564,12 +564,12 @@ These work together: drop a `.cif` for a ligand that's already in your structure
 
 ### Autonomous CDP test loop
 
-For interactive iteration on the renderer (PyMOL translator, NCS ghosts, validation cycler, anything that needs eyes on the WebGL output), MoorhenDev can be driven over Chrome DevTools Protocol — no clicking through the UI, no paste-and-tell with the user.
+For interactive iteration on the renderer (PyMOL translator, NCS ghosts, validation cycler, anything that needs eyes on the WebGL output), PyKekoDev can be driven over Chrome DevTools Protocol — no clicking through the UI, no paste-and-tell with the user.
 
 **Launch the app with debug port + permissive origins**:
 
 ```bash
-/Applications/MoorhenDev.app/Contents/MacOS/MoorhenDev \
+/Applications/PyKekoDev.app/Contents/MacOS/PyKekoDev \
   --remote-debugging-port=9222 \
   --remote-allow-origins='*' \
   > /tmp/moorhendev.log 2>&1 &
@@ -615,7 +615,7 @@ This is what let Phase 3 of the PyMOL translator land in ~3 hours flat — every
 **Cleanup hygiene**: the loop's `bg_color` calls *persist* (see the bg_color note above). End test scripts with `bg_color black` if you don't want to overwrite the user's preference. Alternatively, drive a private Electron user-data-dir so the persistence is in a throwaway location:
 
 ```bash
-MoorhenDev --user-data-dir=/tmp/moorhen-test --remote-debugging-port=9222 --remote-allow-origins='*'
+PyKekoDev --user-data-dir=/tmp/moorhen-test --remote-debugging-port=9222 --remote-allow-origins='*'
 ```
 
 ## Future Work
@@ -662,18 +662,18 @@ MoorhenDev --user-data-dir=/tmp/moorhen-test --remote-debugging-port=9222 --remo
 ~/Moorhen-dev/                     # dev source, branch: main (own clone)
   (same structure)
 
-~/MoorhenWrapper/                  # Electron wrapper — builds BOTH apps
+~/PyKeko/                  # Electron wrapper — builds BOTH apps
   main.js                          # reads variant.json (target tree + port)
   forge.config.js                  # MOORHEN_VARIANT=prod|dev -> bakes variant.json
   package.json                     # scripts: package (prod), package:dev
-  out/MoorhenLocal-darwin-arm64/   # built prod .app  (npm run package)
-  out/MoorhenDev-darwin-arm64/     # built dev  .app  (npm run package:dev)
+  out/PyKeko-darwin-arm64/   # built prod .app  (npm run package)
+  out/PyKekoDev-darwin-arm64/     # built dev  .app  (npm run package:dev)
 
 ~/emsdk/                           # Emscripten SDK
 
 /Applications/
-  MoorhenLocal.app                 # production
-  MoorhenDev.app                   # development
+  PyKeko.app                 # production
+  PyKekoDev.app                   # development
 ```
 
 ### Wrapper key logic (main.js)
@@ -757,10 +757,10 @@ If `./moorhen_build.sh` fails:
 
 ```bash
 # Open production Moorhen
-open /Applications/MoorhenLocal.app
+open /Applications/PyKeko.app
 
 # Open dev Moorhen
-open /Applications/MoorhenDev.app
+open /Applications/PyKekoDev.app
 
 # Browser-only (no Electron)
 cd ~/Moorhen/baby-gru && npm start
@@ -779,18 +779,18 @@ cd ~/Moorhen && source ~/emsdk/emsdk_env.sh
 ./moorhen_build.sh moorhen      # rebuild just moorhen target
 
 # Rebuild wrapper after main.js changes
-cd ~/MoorhenWrapper
+cd ~/PyKeko
 npx electron-forge package
-xattr -rc out/MoorhenLocal-darwin-arm64/MoorhenLocal.app
-cp -r out/MoorhenLocal-darwin-arm64/MoorhenLocal.app /Applications/
+xattr -rc out/PyKeko-darwin-arm64/PyKeko.app
+cp -r out/PyKeko-darwin-arm64/PyKeko.app /Applications/
 ```
 
 ---
 
 ## Useful URLs
 
-- **Fork**: https://github.com/3viil/MoorHenMH
-- **Wrapper**: https://github.com/3viil/MoorhenWrapper
+- **Fork**: https://github.com/3viil/Moorhen-PyKeko
+- **Wrapper**: https://github.com/3viil/PyKeko
 - **Upstream Moorhen**: https://github.com/moorhen-coot/Moorhen
 - **Upstream Electron** (broken from source, but provides pre-built releases): https://github.com/moorhen-coot/MoorhenElectron
 - **Moorhen web app**: https://moorhen.org

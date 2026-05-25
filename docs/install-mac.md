@@ -1,6 +1,6 @@
-# Installing Moorhen on macOS Tahoe (15.x)
+# Installing PyKeko on macOS Tahoe (15.x)
 
-This is the install guide for the **distributable DMG** of MoorHenMH — the fork
+This is the install guide for the **distributable DMG** of Moorhen-PyKeko — the fork
 of [Moorhen](https://github.com/moorhen-coot/Moorhen) with NCS ghosts, the
 PyMOL-style scripting modal, the MCP control surface, validation/peak/ligand
 cyclers, and the other additions described in
@@ -29,23 +29,23 @@ $99/year for a Developer ID certificate.
 
 ### 1. Download the DMG
 
-Visit the latest release on GitHub and download `Moorhen.dmg`:
+Visit the latest release on GitHub and download `PyKeko.dmg`:
 
-**https://github.com/3viil/MoorHenMH/releases/latest**
+**https://github.com/3viil/Moorhen-PyKeko/releases/latest**
 
 Or from the terminal:
 
 ```bash
-gh release download --repo 3viil/MoorHenMH --pattern '*.dmg'
+gh release download --repo 3viil/Moorhen-PyKeko --pattern '*.dmg'
 ```
 
 (`gh` downloads skip the macOS quarantine attribute that the browser sets, so
 if you go this route you can **skip step 3 below**.)
 
-### 2. Drag Moorhen.app to /Applications
+### 2. Drag PyKeko.app to /Applications
 
-Open the downloaded `Moorhen.dmg`. A Finder window opens showing `Moorhen.app`
-and a shortcut to `/Applications`. Drag `Moorhen.app` onto the `Applications`
+Open the downloaded `PyKeko.dmg`. A Finder window opens showing `PyKeko.app`
+and a shortcut to `/Applications`. Drag `PyKeko.app` onto the `Applications`
 shortcut.
 
 Then eject the DMG (right-click → Eject) and delete the downloaded `.dmg` —
@@ -61,16 +61,16 @@ have two options:
 Open Terminal (Spotlight: type "Terminal", hit return), then paste and run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Moorhen.app
+xattr -dr com.apple.quarantine /Applications/PyKeko.app
 ```
 
-That's it. Now you can double-click `Moorhen.app` from `/Applications` (or
+That's it. Now you can double-click `PyKeko.app` from `/Applications` (or
 Spotlight) and it launches normally.
 
 #### Option B — Right-click → Open (no terminal needed)
 
 1. Open `/Applications` in Finder.
-2. **Right-click** (or two-finger tap, or Ctrl-click) on `Moorhen.app`.
+2. **Right-click** (or two-finger tap, or Ctrl-click) on `PyKeko.app`.
 3. Pick **Open** from the context menu.
 4. macOS shows a warning dialog: *"macOS cannot verify the developer of
    'Moorhen'…"*. Click **Open**.
@@ -147,18 +147,18 @@ command reference.
 The app exposes an MCP control surface on `127.0.0.1:42000` (with a
 per-launch token in `~/.moorhen-mcp/control-<port>.json`). To wire it up to
 Claude Code or Claude Desktop, separately install
-[MoorhenMCP](https://github.com/3viil/MoorhenMCP):
+[PyKekoMCP](https://github.com/3viil/PyKekoMCP):
 
 ```bash
-git clone https://github.com/3viil/MoorhenMCP ~/MoorhenMCP
-cd ~/MoorhenMCP
+git clone https://github.com/3viil/PyKekoMCP ~/PyKekoMCP
+cd ~/PyKekoMCP
 npm install
 npm run build
-claude mcp add moorhen -- node ~/MoorhenMCP/dist/server.js
+claude mcp add moorhen -- node ~/PyKekoMCP/dist/server.js
 ```
 
-The MCP bridge auto-discovers any running Moorhen variant (Moorhen, MoorhenLocal,
-MoorhenDev) via the control file. Use the standalone DMG by default; the
+The MCP bridge auto-discovers any running Moorhen variant (Moorhen, PyKeko,
+PyKekoDev) via the control file. Use the standalone DMG by default; the
 `MOORHEN_VITE_PORT` env var lets you pin to a specific instance if you have
 more than one open.
 
@@ -171,7 +171,7 @@ more than one open.
 You skipped step 3. Run:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/Moorhen.app
+xattr -dr com.apple.quarantine /Applications/PyKeko.app
 ```
 
 ### Window opens but renderer is blank / stuck on "Moorhen is loading…"
@@ -208,7 +208,7 @@ export MOORHEN_VITE_PORT=$(cat ~/.moorhen-mcp/control-*.json | python3 -c "impor
 ### Updating to a newer version
 
 1. Quit the running Moorhen app (Cmd+Q).
-2. Move the existing `/Applications/Moorhen.app` to Trash.
+2. Move the existing `/Applications/PyKeko.app` to Trash.
 3. Re-do steps 1–3 above with the new DMG.
 
 User preferences (background colour, default representation, shortcut
@@ -221,7 +221,7 @@ re-installs.
 ## Uninstall
 
 ```bash
-rm -rf /Applications/Moorhen.app
+rm -rf /Applications/PyKeko.app
 rm -rf "~/Library/Application Support/moorhen-wrapper"
 rm -rf "~/Library/Caches/moorhen-wrapper"
 rm -rf ~/.moorhen-mcp
@@ -236,7 +236,7 @@ build from source — see [README-MH.md](../README-MH.md#building) for
 instructions. An x86_64 binary would work technically (the WASM payload is
 architecture-independent; only the Electron host changes) but no x86_64 build
 is currently produced. If demand exists, opening an issue against the
-[MoorhenWrapper](https://github.com/3viil/MoorhenWrapper) repo is the right
+[PyKeko](https://github.com/3viil/PyKeko) repo is the right
 place to request it.
 
 ---
@@ -248,17 +248,17 @@ DMG from source:
 
 ```bash
 # 1. Build the WASM (one-time, ~1 hour)
-git clone --recursive https://github.com/3viil/MoorHenMH ~/Moorhen
+git clone --recursive https://github.com/3viil/Moorhen-PyKeko ~/Moorhen
 cd ~/Moorhen
 # … follow the WASM build steps in README-MH.md …
 
 # 2. Build the DMG
-git clone https://github.com/3viil/MoorhenWrapper ~/MoorhenWrapper
-cd ~/MoorhenWrapper
+git clone https://github.com/3viil/PyKeko ~/PyKeko
+cd ~/PyKeko
 git checkout dist-variant
 npm install
 MOORHEN_VARIANT=dist npm run make
-# → out/make/Moorhen.dmg
+# → out/make/PyKeko.dmg
 ```
 
 The DMG you produce will be byte-different from the released one (build

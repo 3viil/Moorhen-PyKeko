@@ -2,12 +2,12 @@
 
 This is a **plan**, not an implementation. The goal is to produce a self-contained
 `.dmg` for macOS 15 (Tahoe) — and ideally Apple Silicon + Intel — without
-disturbing the working MoorhenLocal / MoorhenDev installs that the dev box
+disturbing the working PyKeko / PyKekoDev installs that the dev box
 currently depends on.
 
-The current wrapper (`~/MoorhenWrapper`) ships **two** variants today: `prod`
-(MoorhenLocal, vite port 5173, sources at `~/Moorhen/baby-gru`) and `dev`
-(MoorhenDev, vite port 5174, sources at `~/Moorhen-dev/baby-gru`). Both
+The current wrapper (`~/PyKeko`) ships **two** variants today: `prod`
+(PyKeko, vite port 5173, sources at `~/Moorhen/baby-gru`) and `dev`
+(PyKekoDev, vite port 5174, sources at `~/Moorhen-dev/baby-gru`). Both
 **require a vite dev server pointed at user-home source trees** to be running.
 That is the single biggest reason the app is not currently a redistributable
 `.dmg` — the packaged `.app` cannot find `~/Moorhen` on someone else's machine,
@@ -21,8 +21,8 @@ and prod variants remain untouched.
 
 ## 0. Non-goals
 
-- **Not touching** `prod` or `dev` variants of MoorhenWrapper, MoorhenLocal,
-  MoorhenDev, `~/Moorhen`, or `~/Moorhen-dev`.
+- **Not touching** `prod` or `dev` variants of PyKeko, PyKeko,
+  PyKekoDev, `~/Moorhen`, or `~/Moorhen-dev`.
 - **Not** building an installer for arbitrary macOS versions. Tahoe is the
   one-and-only target. Older macOS (Sequoia and below) may or may not work; not
   tested.
@@ -31,9 +31,9 @@ and prod variants remain untouched.
   preload script, sandbox: false). Switching to a non-Electron path would be a
   much bigger project.
 - **Not** trying to make a fully separate fork. The `dist` variant lives in the
-  same MoorhenWrapper repo via the existing `MOORHEN_VARIANT` mechanism, and a
-  separate output app name (`Moorhen.app`) so it cannot clobber MoorhenLocal /
-  MoorhenDev.
+  same PyKeko repo via the existing `MOORHEN_VARIANT` mechanism, and a
+  separate output app name (`PyKeko.app`) so it cannot clobber PyKeko /
+  PyKekoDev.
 
 ---
 
@@ -118,7 +118,7 @@ instantiation).
 1. `cd ~/Moorhen && npm ci` (or `npm install --omit=dev` if size is an issue)
 2. `npm run create-version transpile-ts-worker transpile-protobuf transpile-graphql-codegen`
 3. `npm run build` (or whichever script produces `dist/`)
-4. Copy `~/Moorhen/baby-gru/dist/**` into `~/MoorhenWrapper/dist-app/dist/` so
+4. Copy `~/Moorhen/baby-gru/dist/**` into `~/PyKeko/dist-app/dist/` so
    electron-forge picks it up as part of the package.
 5. Copy `~/Moorhen/baby-gru/public/MoorhenAssets/**` into the same
    `dist-app/dist/` (the static server serves both built JS and original
@@ -133,11 +133,11 @@ Append to the existing `VARIANTS`:
 
 ```js
 dist: {
-  name: "Moorhen",  // produces Moorhen.app, distinct from MoorhenLocal.app
+  name: "PyKeko",  // produces PyKeko.app, distinct from PyKeko.app
   config: {
     moorhenSubdir: null,    // static bundle path resolved below
     bundledDist: "dist-app/dist",  // path relative to app resources
-    title: "Moorhen",
+    title: "PyKeko",
   },
 },
 ```
@@ -174,7 +174,7 @@ Append to `makers`:
 {
   name: "@electron-forge/maker-dmg",
   config: {
-    name: "Moorhen",
+    name: "PyKeko",
     overwrite: true,
     // optional: background image, icon, etc.
   },
@@ -184,9 +184,9 @@ Append to `makers`:
 Build command:
 
 ```bash
-cd ~/MoorhenWrapper
+cd ~/PyKeko
 MOORHEN_VARIANT=dist npm run make
-# → ~/MoorhenWrapper/out/make/Moorhen-1.0.0-arm64.dmg (or x64)
+# → ~/PyKeko/out/make/PyKeko-1.0.0-arm64.dmg (or x64)
 ```
 
 ### 2.5 Universal binary (arm64 + x64)
@@ -199,7 +199,7 @@ browser), so the same `dist/` directory works on both arches — only the
 ```js
 packagerConfig: {
   name: variant.name,
-  arch: variant.name === "Moorhen" ? "universal" : undefined,
+  arch: variant.name === "PyKeko" ? "universal" : undefined,
 }
 ```
 
@@ -217,7 +217,7 @@ Three tiers, increasing rigour:
 
 Builds work, but the OS will refuse to launch. Users have to:
 - Right-click → Open the first time, **or**
-- `xattr -dr com.apple.quarantine /Applications/Moorhen.app` after dragging in.
+- `xattr -dr com.apple.quarantine /Applications/PyKeko.app` after dragging in.
 
 This is fine if "redistributable" means "I'll send the DMG to two collaborators
 who know to run that command." Not fine for general distribution.
@@ -271,7 +271,7 @@ download other people can run without arcane terminal commands.
 Nothing here clobbers anything that exists today:
 
 ```
-~/MoorhenWrapper/
+~/PyKeko/
   main.js               # modified to handle BUNDLED_DIST
   forge.config.js       # adds `dist` variant + dmg maker
   preload.js            # unchanged
@@ -280,16 +280,16 @@ Nothing here clobbers anything that exists today:
   dist-app/             # NEW — staging dir; gitignored
     dist/               # built baby-gru output (from `npm run build` in ~/Moorhen)
   out/                  # electron-forge output (already gitignored)
-    Moorhen-arm64.dmg
-    MoorhenLocal-arm64.zip  # unchanged
-    MoorhenDev-arm64.zip    # unchanged
+    PyKeko-arm64.dmg
+    PyKeko-arm64.zip  # unchanged
+    PyKekoDev-arm64.zip    # unchanged
 ```
 
-`MOORHEN_VARIANT=prod npm run package` still produces `MoorhenLocal.app` from
+`MOORHEN_VARIANT=prod npm run package` still produces `PyKeko.app` from
 `~/Moorhen/baby-gru` via vite. `MOORHEN_VARIANT=dev npm run package:dev` still
-produces `MoorhenDev.app`. **The current daily workflow is untouched.**
+produces `PyKekoDev.app`. **The current daily workflow is untouched.**
 
-`MOORHEN_VARIANT=dist npm run make` is the new path — produces `Moorhen.dmg`
+`MOORHEN_VARIANT=dist npm run make` is the new path — produces `PyKeko.dmg`
 that anyone on Tahoe can install.
 
 ---
@@ -302,11 +302,11 @@ that anyone on Tahoe can install.
    ~600 MB, so this is in normal range.)
 2. **Auto-update**: not in scope. Adding `electron-updater` later would let the
    app self-update from a hosted feed — not worth the complexity for v1.
-3. **External tool integration**: MoorhenMCP currently talks to the wrapper via
+3. **External tool integration**: PyKekoMCP currently talks to the wrapper via
    a per-launch control file. That still works inside a packaged app because
    `~/.moorhen-mcp/control-<vitePort>.json` is written from inside the running
    process. But MCP itself is a separate `node` install. If a distribution
-   user wants Claude integration, they still need to install MoorhenMCP
+   user wants Claude integration, they still need to install PyKekoMCP
    separately. Documenting that is fine.
 4. **Window background / icon / DMG layout art**: cosmetic, deferred.
 5. **`window.MOORHEN_FORCE_32BIT`** is set by `preload.js` — needs to be tested
@@ -340,14 +340,14 @@ is the moment of truth).
 
 A safe sequencing that never breaks the current dev/prod:
 
-1. Branch MoorhenWrapper (e.g., `dist-variant`). Do all the work there.
+1. Branch PyKeko (e.g., `dist-variant`). Do all the work there.
 2. While on the branch, `MOORHEN_VARIANT=prod` and `=dev` should still produce
    the same outputs they always did. Verify both still launch on the dev box
    before merging.
-3. Build a `dist` variant locally, install it as `/Applications/Moorhen.app`,
-   verify it launches alongside (not replacing) MoorhenLocal and MoorhenDev.
+3. Build a `dist` variant locally, install it as `/Applications/PyKeko.app`,
+   verify it launches alongside (not replacing) PyKeko and PyKekoDev.
 4. Copy the `.dmg` to a clean test machine — anything where you've never
-   installed Moorhen — and confirm it launches without intervention (modulo
+   installed PyKeko — and confirm it launches without intervention (modulo
    the right-click-Open dance for unsigned builds).
 5. If targeting notarisation: do an unsigned build first, get it working, then
    add signing. Signing failures are much easier to debug when the
@@ -363,7 +363,7 @@ For a small audience (a few collaborators) on the dev box's owner, GitHub
 Releases is the right host: free, no size pressure (2 GB per asset, unlimited
 release storage that doesn't count against repo size), public URL, version
 history. The repo is already on GitHub at
-[3viil/MoorHenMH](https://github.com/3viil/MoorHenMH).
+[3viil/Moorhen-PyKeko](https://github.com/3viil/Moorhen-PyKeko).
 
 ### 8.1 Manual release (recommended for v1)
 
@@ -376,9 +376,9 @@ git -C ~/Moorhen-dev push origin v0.1-dist
 
 # Upload the DMG
 gh release create v0.1-dist \
-  ~/MoorhenWrapper/out/make/Moorhen-1.0.0-arm64.dmg \
-  --repo 3viil/MoorHenMH \
-  --title "Moorhen v0.1 (unsigned macOS Tahoe build)" \
+  ~/PyKeko/out/make/PyKeko-1.0.0-arm64.dmg \
+  --repo 3viil/Moorhen-PyKeko \
+  --title "PyKeko v0.1 (unsigned macOS Tahoe build)" \
   --notes-file ~/Moorhen-dev/docs/release-notes-v0.1.md
 ```
 
@@ -388,21 +388,21 @@ This takes about 30 seconds once the DMG exists.
 
 The recipient downloads a `.dmg` via browser → macOS attaches
 `com.apple.quarantine` → Gatekeeper refuses to launch. **This is true for any
-unsigned app downloaded from the internet, not just Moorhen.** The release
+unsigned app downloaded from the internet, not just PyKeko.** The release
 notes need to tell them how to bypass it. Suggested boilerplate:
 
 ```markdown
 ## Install (macOS 15 Tahoe, Apple Silicon)
 
-1. Download Moorhen-1.0.0-arm64.dmg.
-2. Open it and drag Moorhen.app into /Applications.
+1. Download PyKeko-1.0.0-arm64.dmg.
+2. Open it and drag PyKeko.app into /Applications.
 3. **One-time** — bypass Gatekeeper for this unsigned build:
 
    Open Terminal, paste, hit return:
 
-       xattr -dr com.apple.quarantine /Applications/Moorhen.app
+       xattr -dr com.apple.quarantine /Applications/PyKeko.app
 
-   (Alternative: in Finder, right-click Moorhen.app → Open → confirm. This
+   (Alternative: in Finder, right-click PyKeko.app → Open → confirm. This
    works for the first launch only.)
 
 4. Launch from /Applications or Spotlight as normal.
@@ -428,10 +428,10 @@ quarantine attribute — those tools don't set it. So the **power-user install**
 is:
 
 ```bash
-gh release download v0.1-dist --repo 3viil/MoorHenMH --pattern '*.dmg'
-hdiutil attach Moorhen-1.0.0-arm64.dmg
-cp -R /Volumes/Moorhen/Moorhen.app /Applications/
-hdiutil detach /Volumes/Moorhen
+gh release download v0.1-dist --repo 3viil/Moorhen-PyKeko --pattern '*.dmg'
+hdiutil attach PyKeko-1.0.0-arm64.dmg
+cp -R /Volumes/PyKeko/PyKeko.app /Applications/
+hdiutil detach /Volumes/PyKeko
 ```
 
 No `xattr` step needed. Worth mentioning in release notes for collaborators
@@ -463,19 +463,19 @@ jobs:
       - run: |
           cd baby-gru && npm ci && npm run build
       - run: |
-          cd ../MoorhenWrapper
+          cd ../PyKeko
           MOORHEN_VARIANT=dist npm ci
           MOORHEN_VARIANT=dist npm run make
       - uses: softprops/action-gh-release@v2
         with:
-          files: MoorhenWrapper/out/make/*.dmg
+          files: PyKeko/out/make/*.dmg
 ```
 
 The CCP4 WASM step is the painful one (~1 hr if uncached). With `actions/cache`
 keyed on `CCP4_WASM_BUILD/VERSIONS`, subsequent runs drop to ~5 min. Not worth
 setting up until manual releases start hurting. **Caveat**: this requires
-MoorhenWrapper to live in the same repo (or a submodule of) MoorHenMH so the
-checkout sees both. Today MoorhenWrapper is a separate repo on the dev box —
+PyKeko to live in the same repo (or a submodule of) Moorhen-PyKeko so the
+checkout sees both. Today PyKeko is a separate repo on the dev box —
 either bring it in as a submodule, or run two workflows that coordinate via
 release artifacts.
 
