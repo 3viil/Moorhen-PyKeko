@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/3viil/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="100" height="100" />
+</p>
+
 # Moorhen as a Coot Replacement: Project State
 
 ## Date: 2026-05-21
