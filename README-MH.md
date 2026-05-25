@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/3viil/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="120" height="120" />
+</p>
+
 # Moorhen-PyKeko — Customized Moorhen Fork
 
-A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen) that adds several substantive features on top of upstream Moorhen, plus Coot 0.9.x-style keyboard shortcuts and UX defaults.
+A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen) that adds several substantive features on top of upstream Moorhen, plus Coot 0.9.x-style keyboard shortcuts and UX defaults. Packaged as the **[PyKeko](https://github.com/3viil/PyKeko)** desktop app.
 
 **Upstream**: [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)
 **This fork**: [3viil/Moorhen-PyKeko](https://github.com/3viil/Moorhen-PyKeko)

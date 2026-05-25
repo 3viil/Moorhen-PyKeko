@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/3viil/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="120" height="120" />
+</p>
+
 # Installing PyKeko on macOS Tahoe (15.x)
 
 This is the install guide for the **distributable DMG** of Moorhen-PyKeko — the fork

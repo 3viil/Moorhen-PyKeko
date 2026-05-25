@@ -1,6 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/3viil/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="140" height="140" />
+</p>
+
 # Moorhen-PyKeko
 
-> **A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with NCS ghost overlays, a PyMOL-style scripting modal, MCP control surface for Claude, validation/peak/ligand cyclers, Coot 0.9.x-style keyboard shortcuts, and more.
+> **A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with NCS ghost overlays, a PyMOL-style scripting modal, MCP control surface for Claude, validation/peak/ligand cyclers, Coot 0.9.x-style keyboard shortcuts, and more. Packaged as the **[PyKeko](https://github.com/3viil/PyKeko)** desktop app.
 >
 > ## ⬇️ Install (macOS Tahoe, Apple Silicon)
 >
