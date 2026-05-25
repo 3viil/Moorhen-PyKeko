@@ -1,16 +1,24 @@
 # MoorHenMH
 
-> **This is a personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with Coot 0.9.x-style keyboard shortcuts and UX defaults.
+> **A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with NCS ghost overlays, a PyMOL-style scripting modal, MCP control surface for Claude, validation/peak/ligand cyclers, Coot 0.9.x-style keyboard shortcuts, and more.
 >
-> - **Fork-specific notes**: [README-MH.md](README-MH.md)
-> - **Full project setup & build instructions**: [PROJECT-NOTES.md](PROJECT-NOTES.md)
+> ## ⬇️ Install (macOS Tahoe, Apple Silicon)
+>
+> **[→ Download the latest DMG release](https://github.com/3viil/MoorHenMH/releases/latest)** · **[→ Full install guide](docs/install-mac.md)**
+>
+> Quick install: download `Moorhen.dmg`, drag `Moorhen.app` to `/Applications`, then run once in Terminal:
+>
+> ```bash
+> xattr -dr com.apple.quarantine /Applications/Moorhen.app
+> ```
+>
+> ## 📖 Documentation
+>
+> - **Headline features and shortcuts**: [README-MH.md](README-MH.md)
+> - **PyMOL command reference**: [docs/pymol-translator.md](docs/pymol-translator.md)
+> - **Full project setup & build-from-source**: [PROJECT-NOTES.md](PROJECT-NOTES.md)
 > - **Desktop wrapper (Electron)**: [3viil/MoorhenWrapper](https://github.com/3viil/MoorhenWrapper)
->
-> **Customizations**:
-> - Coot-style keyboard shortcuts: `a` autofit rotamer, `r` triple refine, `e` flip peptide, `t` add terminal residue, `j` jiggle fit, `k` delete sidechain, `w` add waters, `l` cycle ligands, `o` NCS jump, `Shift+H` single refine, `Shift+R` sphere refine, `Shift+F` fill partial, `Shift+S` quick-save
-> - Black background default, bonds (not ribbons) default, hydrogens hidden, hovered-atom shortcut mode
-> - Drop a `.cif` dictionary onto loaded molecules → attaches the dictionary instead of creating a new molecule
-> - Bug fixes: ligand dictionary loading actually refreshes bonds, Import Dictionary toggle now works
+> - **Claude / MCP integration**: [3viil/MoorhenMCP](https://github.com/3viil/MoorhenMCP)
 
 ---
 
