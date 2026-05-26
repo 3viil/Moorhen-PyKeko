@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/3viil/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="100" height="100" />
+  <img src="https://raw.githubusercontent.com/pykeko/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="100" height="100" />
 </p>
 
 # Moorhen as a Coot Replacement: Project State
@@ -14,8 +14,8 @@ Two GitHub repos backing the local workspace:
 
 | Repo | Purpose | Local Path |
 |------|---------|-----------|
-| [3viil/Moorhen-PyKeko](https://github.com/3viil/Moorhen-PyKeko) | Fork of moorhen-coot/Moorhen with customizations | `~/Moorhen` (production), `~/Moorhen-dev` (dev) |
-| [3viil/PyKeko](https://github.com/3viil/PyKeko) | Electron wrapper around the vite dev server; one repo builds both the prod and dev apps | `~/PyKeko` |
+| [pykeko/Moorhen-PyKeko](https://github.com/pykeko/Moorhen-PyKeko) | Fork of moorhen-coot/Moorhen with customizations | `~/Moorhen` (production), `~/Moorhen-dev` (dev) |
+| [pykeko/PyKeko](https://github.com/pykeko/PyKeko) | Electron wrapper around the vite dev server; one repo builds both the prod and dev apps | `~/PyKeko` |
 
 Two apps installed in `/Applications`:
 
@@ -214,7 +214,7 @@ git config --global user.email "your-username@users.noreply.github.com"
 ### 3. Clone the fork
 
 ```bash
-git clone https://github.com/3viil/Moorhen-PyKeko.git ~/Moorhen
+git clone https://github.com/pykeko/Moorhen-PyKeko.git ~/Moorhen
 cd ~/Moorhen
 git remote add upstream https://github.com/moorhen-coot/Moorhen.git
 ```
@@ -254,7 +254,7 @@ npm install
 
 ```bash
 cd ~
-git clone https://github.com/3viil/PyKeko.git
+git clone https://github.com/pykeko/PyKeko.git
 cd PyKeko
 npm install
 npx electron-forge package
@@ -265,7 +265,7 @@ cp -r out/PyKeko-darwin-arm64/PyKeko.app /Applications/
 ### 7. Optional: dev workspace
 
 ```bash
-git clone https://github.com/3viil/Moorhen-PyKeko.git ~/Moorhen-dev
+git clone https://github.com/pykeko/Moorhen-PyKeko.git ~/Moorhen-dev
 cd ~/Moorhen-dev
 git remote add upstream https://github.com/moorhen-coot/Moorhen.git
 cd baby-gru && npm install
@@ -470,8 +470,8 @@ Three layers, each in its own repo:
 |-------|----------|------|
 | Renderer facade | `baby-gru/src/api/MoorhenControlApi.ts` (this fork) | `window.MoorhenControlApi.load/navigate/refine/...` — the actual scripted operations against the Redux store + `commandCentre` |
 | Renderer bridge | `baby-gru/src/api/MoorhenControlBridge.tsx` (this fork) | React component mounted by `MainContainer`; listens to wrapper IPC (`ipcRenderer.on('moorhen-control:invoke')`), dispatches to the facade, responds via `moorhen-control:reply`. After scene-changing ops also dispatches `setRequestDrawScene(true)` because headless control has no mouse events to trigger a repaint. |
-| Electron control server | `main.js` in [PyKeko](https://github.com/3viil/PyKeko) | Token-authenticated HTTP server on `127.0.0.1:<random>`, writes `{port, token, vitePort, title, pid}` to `~/.moorhen-mcp/control-<vitePort>.json`. Forwards POSTed `{token, verb, args}` to the renderer via IPC. Serves `screenshot` directly via `webContents.capturePage()`. |
-| Stdio MCP server | [PyKekoMCP](https://github.com/3viil/PyKekoMCP) (separate repo) | `dist/server.js` is the actual MCP endpoint Claude talks to. Resolves the control file (default port 5173 = PyKeko, override with `MOORHEN_VITE_PORT=5174` for PyKekoDev), POSTs to the wrapper, returns text or image content. |
+| Electron control server | `main.js` in [PyKeko](https://github.com/pykeko/PyKeko) | Token-authenticated HTTP server on `127.0.0.1:<random>`, writes `{port, token, vitePort, title, pid}` to `~/.moorhen-mcp/control-<vitePort>.json`. Forwards POSTed `{token, verb, args}` to the renderer via IPC. Serves `screenshot` directly via `webContents.capturePage()`. |
+| Stdio MCP server | [PyKekoMCP](https://github.com/pykeko/PyKekoMCP) (separate repo) | `dist/server.js` is the actual MCP endpoint Claude talks to. Resolves the control file (default port 5173 = PyKeko, override with `MOORHEN_VITE_PORT=5174` for PyKekoDev), POSTs to the wrapper, returns text or image content. |
 
 Registration:
 ```bash
@@ -793,8 +793,8 @@ cp -r out/PyKeko-darwin-arm64/PyKeko.app /Applications/
 
 ## Useful URLs
 
-- **Fork**: https://github.com/3viil/Moorhen-PyKeko
-- **Wrapper**: https://github.com/3viil/PyKeko
+- **Fork**: https://github.com/pykeko/Moorhen-PyKeko
+- **Wrapper**: https://github.com/pykeko/PyKeko
 - **Upstream Moorhen**: https://github.com/moorhen-coot/Moorhen
 - **Upstream Electron** (broken from source, but provides pre-built releases): https://github.com/moorhen-coot/MoorhenElectron
 - **Moorhen web app**: https://moorhen.org

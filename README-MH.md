@@ -1,15 +1,15 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/3viil/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="120" height="120" />
+  <img src="https://raw.githubusercontent.com/pykeko/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="120" height="120" />
 </p>
 
 # Moorhen-PyKeko — Customized Moorhen Fork
 
-A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen) that adds several substantive features on top of upstream Moorhen, plus Coot 0.9.x-style keyboard shortcuts and UX defaults. Packaged as the **[PyKeko](https://github.com/3viil/PyKeko)** desktop app.
+A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen) that adds several substantive features on top of upstream Moorhen, plus Coot 0.9.x-style keyboard shortcuts and UX defaults. Packaged as the **[PyKeko](https://github.com/pykeko/PyKeko)** desktop app.
 
 **Upstream**: [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)
-**This fork**: [3viil/Moorhen-PyKeko](https://github.com/3viil/Moorhen-PyKeko)
-**Desktop wrapper**: [3viil/PyKeko](https://github.com/3viil/PyKeko)
-**Claude/MCP server**: [3viil/PyKekoMCP](https://github.com/3viil/PyKekoMCP)
+**This fork**: [pykeko/Moorhen-PyKeko](https://github.com/pykeko/Moorhen-PyKeko)
+**Desktop wrapper**: [pykeko/PyKeko](https://github.com/pykeko/PyKeko)
+**Claude/MCP server**: [pykeko/PyKekoMCP](https://github.com/pykeko/PyKekoMCP)
 **Full project notes**: [PROJECT-NOTES.md](PROJECT-NOTES.md)
 
 ---
@@ -45,7 +45,7 @@ Visualize non-crystallographic symmetry by overlaying every NCS-related chain *t
 
 ### 3. Claude control surface (PyKekoMCP)
 
-[PyKekoMCP](https://github.com/3viil/PyKekoMCP) is a Model Context Protocol server that drives a running PyKeko/PyKekoDev app from Claude (load coords/maps, navigate, refine, rotamer fit, flip peptide, add waters, delete, undo/redo, screenshot). The Electron wrapper (token-authenticated HTTP control server) and the in-page bridge (`MoorhenControlApi` / `MoorhenControlBridge`) are part of this fork.
+[PyKekoMCP](https://github.com/pykeko/PyKekoMCP) is a Model Context Protocol server that drives a running PyKeko/PyKekoDev app from Claude (load coords/maps, navigate, refine, rotamer fit, flip peptide, add waters, delete, undo/redo, screenshot). The Electron wrapper (token-authenticated HTTP control server) and the in-page bridge (`MoorhenControlApi` / `MoorhenControlBridge`) are part of this fork.
 
 `MoorhenControlApi` also exposes `runPymol(src)` and `runJs(src)`, used by [the autonomous CDP test loop](PROJECT-NOTES.md#autonomous-cdp-test-loop) — scripts can be driven from outside the app entirely.
 
@@ -225,7 +225,7 @@ git clone https://github.com/emscripten-core/emsdk.git ~/emsdk
 cd ~/emsdk && ./emsdk install latest && ./emsdk activate latest
 
 # Clone
-git clone https://github.com/3viil/Moorhen-PyKeko.git ~/Moorhen
+git clone https://github.com/pykeko/Moorhen-PyKeko.git ~/Moorhen
 cd ~/Moorhen
 git remote add upstream https://github.com/moorhen-coot/Moorhen.git
 
@@ -245,4 +245,4 @@ npm start
 # Open http://localhost:5173/ in Chrome
 ```
 
-For the desktop wrapper (single-click `.app`), see [3viil/PyKeko](https://github.com/3viil/PyKeko).
+For the desktop wrapper (single-click `.app`), see [pykeko/PyKeko](https://github.com/pykeko/PyKeko).
