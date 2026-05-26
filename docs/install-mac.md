@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/3viil/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="120" height="120" />
+  <img src="https://raw.githubusercontent.com/pykeko/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="120" height="120" />
 </p>
 
 # Installing PyKeko on macOS Tahoe (15.x)
@@ -35,12 +35,12 @@ $99/year for a Developer ID certificate.
 
 Visit the latest release on GitHub and download `PyKeko.dmg`:
 
-**https://github.com/3viil/Moorhen-PyKeko/releases/latest**
+**https://github.com/pykeko/Moorhen-PyKeko/releases/latest**
 
 Or from the terminal:
 
 ```bash
-gh release download --repo 3viil/Moorhen-PyKeko --pattern '*.dmg'
+gh release download --repo pykeko/Moorhen-PyKeko --pattern '*.dmg'
 ```
 
 (`gh` downloads skip the macOS quarantine attribute that the browser sets, so
@@ -151,10 +151,10 @@ command reference.
 The app exposes an MCP control surface on `127.0.0.1:42000` (with a
 per-launch token in `~/.moorhen-mcp/control-<port>.json`). To wire it up to
 Claude Code or Claude Desktop, separately install
-[PyKekoMCP](https://github.com/3viil/PyKekoMCP):
+[PyKekoMCP](https://github.com/pykeko/PyKekoMCP):
 
 ```bash
-git clone https://github.com/3viil/PyKekoMCP ~/PyKekoMCP
+git clone https://github.com/pykeko/PyKekoMCP ~/PyKekoMCP
 cd ~/PyKekoMCP
 npm install
 npm run build
@@ -240,7 +240,7 @@ build from source — see [README-MH.md](../README-MH.md#building) for
 instructions. An x86_64 binary would work technically (the WASM payload is
 architecture-independent; only the Electron host changes) but no x86_64 build
 is currently produced. If demand exists, opening an issue against the
-[PyKeko](https://github.com/3viil/PyKeko) repo is the right
+[PyKeko](https://github.com/pykeko/PyKeko) repo is the right
 place to request it.
 
 ---
@@ -252,12 +252,12 @@ DMG from source:
 
 ```bash
 # 1. Build the WASM (one-time, ~1 hour)
-git clone --recursive https://github.com/3viil/Moorhen-PyKeko ~/Moorhen
+git clone --recursive https://github.com/pykeko/Moorhen-PyKeko ~/Moorhen
 cd ~/Moorhen
 # … follow the WASM build steps in README-MH.md …
 
 # 2. Build the DMG
-git clone https://github.com/3viil/PyKeko ~/PyKeko
+git clone https://github.com/pykeko/PyKeko ~/PyKeko
 cd ~/PyKeko
 git checkout dist-variant
 npm install

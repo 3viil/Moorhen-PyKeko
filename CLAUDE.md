@@ -1,8 +1,8 @@
-# Claude context — `3viil/Moorhen-PyKeko`
+# Claude context — `pykeko/Moorhen-PyKeko`
 
-A fork of upstream [`moorhen-coot/Moorhen`](https://github.com/moorhen-coot/Moorhen) (a Coot-based molecular graphics web app, WebAssembly) with PyKeko-specific customizations. The compiled wrapper that turns this into a desktop app lives at [`3viil/PyKeko`](https://github.com/3viil/PyKeko); the MCP server for Claude control lives at [`3viil/PyKekoMCP`](https://github.com/3viil/PyKekoMCP).
+A fork of upstream [`moorhen-coot/Moorhen`](https://github.com/moorhen-coot/Moorhen) (a Coot-based molecular graphics web app, WebAssembly) with PyKeko-specific customizations. The compiled wrapper that turns this into a desktop app lives at [`pykeko/PyKeko`](https://github.com/pykeko/PyKeko); the MCP server for Claude control lives at [`pykeko/PyKekoMCP`](https://github.com/pykeko/PyKekoMCP).
 
-See [`3viil/PyKeko/CLAUDE.md`](https://github.com/3viil/PyKeko/blob/main/CLAUDE.md) for the full project family overview, naming conventions, and wire-protocol do-not-rename rules.
+See [`pykeko/PyKeko/CLAUDE.md`](https://github.com/pykeko/PyKeko/blob/main/CLAUDE.md) for the full project family overview, naming conventions, and wire-protocol do-not-rename rules.
 
 ## What this fork adds beyond upstream Moorhen
 
@@ -55,7 +55,7 @@ Known gotcha (the `~/bin/moorhen` shell launcher exists to work around this): ru
 
 ## Releases
 
-Releases are tagged `pk-vX.Y` (e.g., [`pk-v0.1`](https://github.com/3viil/Moorhen-PyKeko/releases/tag/pk-v0.1)) and ship `PyKeko.dmg` as the asset, built from the matching `~/PyKeko` commit. Version source of truth: `~/PyKeko/package.json`; this fork's `baby-gru/package.json` carries upstream Moorhen's version (`1.0.0-alpha.1`) and shouldn't be edited as part of PyKeko's versioning.
+Releases are tagged `pk-vX.Y` (e.g., [`pk-v0.1`](https://github.com/pykeko/Moorhen-PyKeko/releases/tag/pk-v0.1)) and ship `PyKeko.dmg` as the asset, built from the matching `~/PyKeko` commit. Version source of truth: `~/PyKeko/package.json`; this fork's `baby-gru/package.json` carries upstream Moorhen's version (`1.0.0-alpha.1`) and shouldn't be edited as part of PyKeko's versioning.
 
 ## Branch-sync workflow
 

@@ -363,7 +363,7 @@ For a small audience (a few collaborators) on the dev box's owner, GitHub
 Releases is the right host: free, no size pressure (2 GB per asset, unlimited
 release storage that doesn't count against repo size), public URL, version
 history. The repo is already on GitHub at
-[3viil/Moorhen-PyKeko](https://github.com/3viil/Moorhen-PyKeko).
+[pykeko/Moorhen-PyKeko](https://github.com/pykeko/Moorhen-PyKeko).
 
 ### 8.1 Manual release (recommended for v1)
 
@@ -377,7 +377,7 @@ git -C ~/Moorhen-dev push origin v0.1-dist
 # Upload the DMG
 gh release create v0.1-dist \
   ~/PyKeko/out/make/PyKeko-1.0.0-arm64.dmg \
-  --repo 3viil/Moorhen-PyKeko \
+  --repo pykeko/Moorhen-PyKeko \
   --title "PyKeko v0.1 (unsigned macOS Tahoe build)" \
   --notes-file ~/Moorhen-dev/docs/release-notes-v0.1.md
 ```
@@ -428,7 +428,7 @@ quarantine attribute — those tools don't set it. So the **power-user install**
 is:
 
 ```bash
-gh release download v0.1-dist --repo 3viil/Moorhen-PyKeko --pattern '*.dmg'
+gh release download v0.1-dist --repo pykeko/Moorhen-PyKeko --pattern '*.dmg'
 hdiutil attach PyKeko-1.0.0-arm64.dmg
 cp -R /Volumes/PyKeko/PyKeko.app /Applications/
 hdiutil detach /Volumes/PyKeko
