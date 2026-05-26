@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/pykeko/PyKeko/main/PyKeko_icon.png" alt="PyKeko" width="120" height="120" />
+  <img src="https://raw.githubusercontent.com/pykeko/PyKeko/main/PyKeko_avatar.png" alt="PyKeko" width="120" height="120" />
 </p>
 
 # Moorhen-PyKeko — Customized Moorhen Fork
