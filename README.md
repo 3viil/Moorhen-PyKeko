@@ -6,7 +6,7 @@
 
 > **A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with NCS ghost overlays, a PyMOL-style scripting modal, MCP control surface for Claude, validation/peak/ligand cyclers, Coot 0.9.x-style keyboard shortcuts, and more. Packaged as the **[PyKeko](https://github.com/3viil/PyKeko)** desktop app.
 >
-> Named after the pūkeko bird, a New Zealand cousin of moorhens and coots
+> Named after the [pūkeko](https://en.wikipedia.org/wiki/Australasian_swamphen) bird, a New Zealand cousin of moorhens and coots
 >
 > ## ⬇️ Install (macOS Tahoe, Apple Silicon)
 >
