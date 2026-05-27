@@ -4,9 +4,8 @@
 
 # Moorhen-PyKeko
 
-> **A fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with NCS ghost overlays, a PyMOL command language scripting modal, MCP control surface for Claude, NCS/validation/density peak/ligand/NCS jumping, Coot 0.9.x-style keyboard shortcuts/defaults, and more. Packaged as the **[PyKeko](https://github.com/pykeko/PyKeko)** MacOS Tahoe desktop app.
+> **A customized fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** — Coot's C++ engine compiled to WebAssembly via Emscripten, wrapped in a TypeScript/React UI in `baby-gru/`. The PyKeko fork extends upstream with extra C++ embind bindings (NCS ghost matrices, single-water placement), an in-page control bridge for external automation, a PyMOL command-language translator, and Coot 0.9.x-style keyboard shortcuts and defaults.
 >
-> Named after the [pūkeko](https://en.wikipedia.org/wiki/Australasian_swamphen) bird, a New Zealand cousin of moorhens and coots
 >
 > ## ⬇️ Install (macOS Tahoe, Apple Silicon)
 >
