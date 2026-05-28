@@ -7,6 +7,15 @@
 > **A customized fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** — Coot's C++ engine compiled to WebAssembly via Emscripten, wrapped in a TypeScript/React UI in `baby-gru/`. The PyKeko fork extends upstream with extra C++ embind bindings (NCS ghost matrices, single-water placement), an in-page control bridge for external automation, a PyMOL command-language translator, and Coot 0.9.x-style keyboard shortcuts and defaults.
 >
 >
+> ## 🆕 What's new in 0.2.0
+>
+> - **Command-line integration** — `pykeko model.pdb data.mtz ligand.cif` opens files (a restraints `.cif` attaches as a *dictionary* to the matching coordinates, in any argument order, rather than spawning a new molecule); `pykeko 1crn` fetches by PDB id; `pykeko script.pml` runs a PyMOL-style script. A second `pykeko …` loads into the running window (PyMOL `-R` style); `--new` opens a fresh one. Install the `pykeko` command from **Preferences → Install command-line launcher**.
+> - **Residue torsion editor** — right-click a residue → **Edit torsions**: backbone φ/ψ as a *local* move (the residue moves, the peptide bond to the neighbour stretches, refine after) plus sidechain χ, with a **live Ramachandran plot** tracking the sliders.
+> - **`pykeko_remote.py`** — a PyMOL-`-R`-style Python client (`remote/`) that auto-discovers a running PyKeko and drives it from your own scripts: load / state / refine / screenshot / run PyMOL commands / ….
+> - **Coot-style defaults** — black background, hydrogens shown by default when present, PyMOL as the default Interactive Scripting language, the `h` shortcut overlay moved to the right, and the PyKeko bird logo. A one-time first-run note points new users at the command-line launcher.
+>
+> Full feature list and shortcuts: [README-MH.md](README-MH.md) · Already on 0.1? See [upgrading](docs/install-mac.md#updating-to-a-newer-version).
+>
 > ## ⬇️ Install (macOS Tahoe, Apple Silicon)
 >
 > **[→ Download the latest DMG release](https://github.com/pykeko/Moorhen-PyKeko/releases/latest)** · **[→ Full install guide](docs/install-mac.md)**
