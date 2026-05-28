@@ -21,18 +21,19 @@ runner; `.js` files use the JavaScript runner.
 ## Quick start
 
 ```
-fetch 1crn
+fetch 7sj3
 hide everything
 show cartoon
 color red
 color blue, chain A
-show sticks, resi 1-10
-color yellow, resi 1-10
-zoom chain A
+show sticks, lig
+color yellow, lig
+zoom lig
 ```
 
-Expected: chain A cartoon in blue (1crn is single-chain so the whole ribbon
-turns blue), residues 1–10 as yellow ribbon + yellow sticks, view zoomed.
+Expected: 7sj3 is the two-chain CDK4–Cyclin D3 complex, so `color blue, chain A`
+turns CDK4 (chain A) blue while Cyclin D3 (chain B) stays red; the bound
+abemaciclib ligand shows as yellow sticks, and the view zooms onto it.
 
 ---
 
@@ -140,7 +141,7 @@ within / byres / etc — iterates atoms in JS).
 
 **Reducers**: `first P` / `last P`.
 
-**Object names**: a bare identifier (or `1crn`, `4hhb` — digit-led PDB ids work)
+**Object names**: a bare identifier (or `7sj3`, `4hhb` — digit-led PDB ids work)
 is treated as an object reference. Names registered by `fetch` or `select`
 are resolved first; the live Redux molecule list is checked as a fallback.
 
