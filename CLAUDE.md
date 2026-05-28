@@ -55,7 +55,7 @@ Known gotcha (the `~/bin/moorhen` shell launcher exists to work around this): ru
 
 ## Releases
 
-Releases are tagged `pk-vX.Y` (e.g., [`pk-v0.1`](https://github.com/pykeko/Moorhen-PyKeko/releases/tag/pk-v0.1)) and ship `PyKeko.dmg` as the asset, built from the matching `~/PyKeko` commit. Version source of truth: `~/PyKeko/package.json`; this fork's `baby-gru/package.json` carries upstream Moorhen's version (`1.0.0-alpha.1`) and shouldn't be edited as part of PyKeko's versioning.
+Releases are tagged `pk-vX.Y` (latest: [`pk-v0.2`](https://github.com/pykeko/Moorhen-PyKeko/releases/tag/pk-v0.2), 2026-05-28; from pk-v0.2 the `~/PyKeko` wrapper carries a matching tag too) and ship `PyKeko.dmg` as the asset, built from the matching `~/PyKeko` commit. Version source of truth: `~/PyKeko/package.json` (currently `0.2.0`); this fork's `baby-gru/package.json` carries upstream Moorhen's version (`1.0.0-alpha.1`) and shouldn't be edited as part of PyKeko's versioning.
 
 ## Branch-sync workflow
 
