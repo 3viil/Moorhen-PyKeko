@@ -4,214 +4,117 @@
 
 # Moorhen-PyKeko
 
-> **A personal fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen)** with NCS ghost overlays, a PyMOL-style scripting modal, MCP control surface for Claude, validation/peak/ligand cyclers, Coot 0.9.x-style keyboard shortcuts, and more. Packaged as the **[PyKeko](https://github.com/pykeko/PyKeko)** desktop app.
->
-> ## 🆕 What's new in 0.2.0
->
-> - **Command-line integration** — `pykeko model.pdb data.mtz ligand.cif` opens files (a restraints `.cif` attaches as a *dictionary* to the matching coordinates, in any argument order, rather than spawning a new molecule); `pykeko 1crn` fetches by PDB id; `pykeko script.pml` runs a PyMOL-style script. A second `pykeko …` loads into the running window (PyMOL `-R` style); `--new` opens a fresh one. Install the `pykeko` command from **Preferences → Install command-line launcher**.
-> - **Residue torsion editor** — right-click a residue → **Edit torsions**: backbone φ/ψ as a *local* move (the residue moves, the peptide bond to the neighbour stretches, refine after) plus sidechain χ, with a **live Ramachandran plot** tracking the sliders.
-> - **`pykeko_remote.py`** — a PyMOL-`-R`-style Python client (`remote/`) that auto-discovers a running PyKeko and drives it from your own scripts: load / state / refine / screenshot / run PyMOL commands / ….
-> - **Coot-style defaults** — black background, hydrogens shown by default when present, PyMOL as the default Interactive Scripting language, the `h` shortcut overlay moved to the right, and the PyKeko bird logo. A one-time first-run note points new users at the command-line launcher.
->
-> Full feature list and shortcuts: [README-MH.md](README-MH.md) · Already on 0.1? See [upgrading](docs/install-mac.md#updating-to-a-newer-version).
->
-> ## ⬇️ Install (macOS Tahoe, Apple Silicon)
->
-> **[→ Download the latest DMG release](https://github.com/pykeko/Moorhen-PyKeko/releases/latest)** · **[→ Full install guide](docs/install-mac.md)**
->
-> Quick install: download `PyKeko.dmg`, drag `PyKeko.app` to `/Applications`, then run once in Terminal:
->
-> ```bash
-> xattr -dr com.apple.quarantine /Applications/PyKeko.app
-> ```
->
-> ## 📖 Documentation
->
-> - **Headline features and shortcuts**: [README-MH.md](README-MH.md)
-> - **PyMOL command reference**: [docs/pymol-translator.md](docs/pymol-translator.md)
-> - **Full project setup & build-from-source**: [PROJECT-NOTES.md](PROJECT-NOTES.md)
-> - **Desktop wrapper (Electron)**: [pykeko/PyKeko](https://github.com/pykeko/PyKeko)
-> - **Claude / MCP integration**: [pykeko/PyKekoMCP](https://github.com/pykeko/PyKekoMCP)
+The **brains** of [PyKeko](https://github.com/pykeko) — a fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen), which is [Coot](https://www2.mrc-lmb.cam.ac.uk/personal/pemsley/coot/)'s C++ engine compiled to WebAssembly behind a TypeScript/React UI. This repo holds the web app source plus the WASM build, customized with PyKeko's extra C++ bindings, an in-page control bridge, a PyMOL command translator, a torsion editor, and Coot 0.9.x-style UX.
+
+> 🐦 **New here?** Start at the **[PyKeko project page](https://github.com/pykeko)** — what the project is, the Coot→Moorhen→PyKeko heritage, install, and screenshots. *This README is the technical doc for the fork itself.*
+
+| | |
+|---|---|
+| **Upstream** | [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen) (BSD-3-Clause) — preserved README: [MOORHEN-UPSTREAM-README.md](MOORHEN-UPSTREAM-README.md) |
+| **Desktop wrapper** | [pykeko/PyKeko](https://github.com/pykeko/PyKeko) — builds `PyKeko.app` / `.dmg` from this tree |
+| **Claude / MCP** | [pykeko/PyKekoMCP](https://github.com/pykeko/PyKekoMCP) |
+| **Feature reference** | [README-MH.md](README-MH.md) — every added feature + the full keyboard-shortcut table |
+| **Build & implementation notes** | [PROJECT-NOTES.md](PROJECT-NOTES.md) |
 
 ---
 
-# Moorhen (upstream README below)
+## What this repo is
 
-[![NPM Version](https://badge.fury.io/js/moorhen.svg?style=flat)](https://npmjs.org/package/moorhen)
-[![Inline docs](https://github.com/moorhen-coot/moorhen/actions/workflows/run-tests.yml/badge.svg)](https://github.com/moorhen-coot/Moorhen/actions/workflows/run-tests.yml)
-[![Inline docs](https://github.com/moorhen-coot/MoorhenOrgBuild/actions/workflows/build-and-deploy.yml/badge.svg)](https://moorhen.org)
-[![Inline docs](https://github.com/moorhen-coot/moorhen/actions/workflows/js-documentation.yml/badge.svg)](https://moorhen-coot.github.io/Moorhen/)
-[![Inline docs](https://github.com/moorhen-coot/wiki/actions/workflows/jekyll.yml/badge.svg)](https://moorhen-coot.github.io/wiki/)
+The Moorhen source tree:
 
-Moorhen is a web browser molecular graphics program based on the Coot desktop program.
-It is developed by compiling some [CCP4](https://www.ccp4.ac.uk/) libraries and programs, [Coot](https://www2.mrc-lmb.cam.ac.uk/personal/pemsley/coot/) and their dependencies to Web Assembly and then combining with a React user interface.
+- **`baby-gru/`** — the TypeScript/React single-page app (UI, scene, state, command dispatch). This is what `npm` builds.
+- **`wasm_src/`, `coot-patches/`, `moorhen_build.sh`, `VERSIONS`, `get_sources`** — the toolchain that fetches Coot/CCP4 sources and compiles them (plus PyKeko's C++ additions) to `moorhen.wasm`.
 
-The emscripten suite of tools is required to do the
-compilation.
+Two things consume it: the [PyKeko](https://github.com/pykeko/PyKeko) Electron wrapper (→ native macOS app), and a plain browser build (`cd baby-gru && npm start`).
 
-The sources of CCP4, Coot, Privateer, FFTW, and GSL are not included. They are downloaded and (possibly) patched by the build process of this project.
+## Architecture
 
-The following libraries/programs are compiled to Web Assembly:
-* libccp4 (8.0.0)
-* clipper ('gemmi' branch)
-* ssm (1.4.0)
-* mmdb2 (2.0.22)
-* gemmi 0.7.0
-* libcoot (commit hash specified in `VERSIONS`; latest release is 1.20) 
-* fftw 2.1.5
-* fftw3 3.3.10
-* gsl 2.8
-* Boost 1.89.0
-* glm 0.9.9.8
-* Eigen 5.0.1
-* RDKit 2025\_09\_6
-* graphene 1.10.8
-* libsigc++ 3.8.0
-* Freetype 2.14.3
-* Jsoncpp 1.9.6
+How a Coot operation flows from a click to the screen:
 
-Moorhen is available to use at [https://moorhen.org](https://moorhen.org).
+```
+ React UI (baby-gru/src)
+      │  redux state, scene (WebGL)
+      ▼
+ MoorhenCommandCentre ──postMessage──▶ CootWorker  (Web Worker, pthreads)
+                                          │
+                                          ▼
+                                       moorhen.wasm
+                                       libcootapi + CCP4 · Clipper · MMDB ·
+                                       GEMMI · RDKit · FFTW · GSL · Boost
+```
 
-Further information can be found in our [wiki pages](https://moorhen-coot.github.io/wiki/) and our [dev. docs](https://moorhen-coot.github.io/Moorhen/).
+The WASM is built from upstream C++ sources, fetched and patched at build time:
 
-## **Binaries**
+| Piece | Role |
+|---|---|
+| `get_sources` + `VERSIONS` | pin & fetch Coot/CCP4/etc. sources into `checkout/` |
+| `coot-patches/apply.sh` | copy PyKeko's C++ into `checkout/coot-1.0/api/` and patch the headers |
+| `coot-patches/*.cc` | new libcootapi methods — `get_ncs_ghost_matrix` (SSM NCS), `add_water_at_position` (single water), `set_phi_psi` (local backbone torsion) |
+| `wasm_src/moorhen-wrappers.cc` + `CMakeLists.txt` | Embind bindings exposing those (and stock) methods to JS |
+| `moorhen_build.sh` | emscripten build → `baby-gru/public/MoorhenAssets/wasm/{moorhen.js,moorhen.wasm}` |
 
-Binaries are available on the releases page. Please read the instructions there before using.
+**Control bridge** (how the desktop wrapper and Claude/MCP drive the app): `MoorhenControlBridge` (mounted in `MainContainer`) ↔ `window.MoorhenControlApi` ↔ `commandCentre`. The wrapper's token-authenticated HTTP server posts verbs here; `MoorhenControlApi` also exposes `runPymol(src)` / `runJs(src)`. See [PyKekoMCP](https://github.com/pykeko/PyKekoMCP).
 
-## **Compilation instructions**
+> **Wire-protocol identifiers keep the Moorhen name on purpose** — `MoorhenControlBridge`, `window.MoorhenControlApi`, `MoorhenAssets/`, `moorhen-control:*` IPC channels, `~/.moorhen-mcp/control-*.json`, `MOORHEN_*` env vars, `moorhen_*` MCP tools. They flow between this repo, the wrapper, and PyKekoMCP; renaming any breaks the control channel.
 
-**Requirements** 
+## What the fork adds beyond upstream Moorhen
 
-* A Bourne-like shell
-* git
-* curl
-* patch
-* ninja
-* meson
-* cmake
-* flex
-* bison
-* A *native* C++ compiler. (This is required for part of the `boost` build system).
-* `autoconf`,`autotools`
-* `libtool`
-* emsdk/emscripten (Steps 1 and 2 below)
-\
-\
-Most of these (except emscripten) can be installed by somelike like `sudo apt install git cmake curl patch meson ninja-build autoconf automake libtool flex bison g++ pkg-config` on a Debian like system. All of these should be available through Homebrew or Ports on macOS.
-\
-\
-Moorhen should build on any reasonably recent version of macOS (Intel or Arm64) and any reasonly recent Linux distribution (x86\_64 or aarch64). Tested on Ubuntu 22.04 x86\_64, Raspberry Pi OS Bookworm/Debian 12 on Pi5, macOS Monteray and Sonama and others.
+Summaries — full writeups, with the keyboard-shortcut table and conflict-resolution notes, in **[README-MH.md](README-MH.md)**:
 
-1. Install emscripten (following  [https://emscripten.org/docs/getting_started/downloads.html](https://emscripten.org/docs/getting_started/downloads.html)):  
-`git clone https://github.com/emscripten-core/emsdk.git`  
-`cd emsdk`  
-`git pull`  
-`./emsdk install latest`  
-`./emsdk activate latest`  
-(Moorhen is known to build successfully with emscripten version 5.0.3 - the 14th March 2026 release, and several earlier versions. There may have been a problem with 5.0.1)
+- **PyMOL command-language translator** in *Interactive Scripting* (JS/PyMOL toggle); `.pml` files run directly. Selection algebra, representations, colours, measurements, settings. 62 unit tests. ([reference](docs/pymol-translator.md))
+- **NCS ghosts** — overlay NCS-related chains transformed onto a master chain (`g`), via the C++ `get_ncs_ghost_matrix` + the existing instanced-bond path.
+- **Residue torsion editor** — backbone φ/ψ (`set_phi_psi`, local move) + sidechain χ (rotate-around-bond) with a live Ramachandran plot, in the residue right-click menu.
+- **Cyclers** — validation outliers (`n`), difference-map peaks (`p`), ligands (`l`), NCS mates (`o`), all keyboard-driven with toasts.
+- **Single water at crosshairs** (`w`, `add_water_at_position`) and **drag-atoms** (`d`).
+- **CLI / ligand-dictionary handling** — restraints `.cif` auto-attaches to loaded molecules instead of spawning a placeholder; consumed by the wrapper's command-line launch.
+- **In-page control bridge / MCP surface** (above).
+- **Coot 0.9-style defaults** — black background, bonds (not ribbons) default, hydrogens-when-present, shortcut-on-hovered-atom.
 
-2. Each time you want to use emscripten:  
-`source ./emsdk_env.sh`
+## Build from source
 
-3. Get the source:  
-`git clone https://github.com/moorhen-coot/Moorhen.git`  
-`cd Moorhen`
+Short version (full new-machine setup — emsdk, brew deps, gotchas — in [PROJECT-NOTES.md](PROJECT-NOTES.md)):
 
-4. Build gsl, Boost, RDKIt, Coot, the CCP4 libraries and examples:  
-<br>In this branch, it is intended that you do the build in the source directory. 
-<br/>After first checkout you should run the following to build the 32-bit and 64-bit WebAssembly versions of Moorhen:  
-`./moorhen_build.sh`  
-`./moorhen_build.sh  --64bit`  
-This should build all dependencies and then build `Moorhen`.
+```bash
+git clone https://github.com/pykeko/Moorhen-PyKeko.git ~/Moorhen
+cd ~/Moorhen
+git remote add upstream https://github.com/moorhen-coot/Moorhen.git
 
-**It is important to build both versions at the moment.**
+./get_sources                 # fetch Coot/CCP4/... into checkout/ (per VERSIONS)
+./coot-patches/apply.sh       # apply PyKeko's C++ additions
 
-6. To run the Moorhen molecular graphics application:  
-`cd baby-gru`  
-`npm start`  
-And then point a web browser at `http://localhost:5173/` .  
+source ~/emsdk/emsdk_env.sh
+export PATH=/opt/homebrew/bin:$PATH      # Homebrew node; anaconda/CCP4 node breaks the build
+./moorhen_build.sh moorhen    # emscripten build → baby-gru/public/MoorhenAssets/wasm (~1 hr first time)
 
-## **Updating**
+cd baby-gru && npm install && npm start  # browser dev server (http://localhost:5173)
+```
 
-When you wish to update the application from this git repository, do the following steps:
-1. `git pull`
-2. `./moorhen_build.sh moorhen`
-3. `./moorhen_build.sh --64bit moorhen`
+The WASM artifacts and `checkout/`, `monomers/`, etc. are gitignored — they're built locally or copied from a `PyKeko.dmg` (see [PROJECT-NOTES.md](PROJECT-NOTES.md)). For the desktop `.app`, see [pykeko/PyKeko](https://github.com/pykeko/PyKeko).
 
-### **Updating Coot and Lhasa dependencies (for developers)**
+## Tracking upstream
 
-When you wish to update the `Coot` (and/or [`Lhasa`](https://github.com/moorhen-coot/LhasaReact)) git repository used for compiling Moorhen, do the following steps:
-1. `./update_git_rev coot`
-2. `./moorhen_build.sh moorhen`
-3. `./moorhen_build.sh --64bit moorhen`
+```bash
+git fetch upstream
+git merge upstream/main      # resolve conflicts, then push
+```
 
-For updating `Lhasa`, substitute `coot` for `lhasa` in the first command: `./update_git_rev lhasa`.
+## Branches & releases
 
-![Moorhen](wasm_src_frontend/baby_gru.png)
-*The Moorhen application*
+| Branch | Use |
+|---|---|
+| `main` | default; basis for releases |
+| `ncs-ghosts` | active working branch (the dist `.app` builds from this) |
 
-## **What else can do with the compiled libraries?**
+Releases are tagged **`pk-vX.Y`** and ship `PyKeko.dmg` — see [Releases](https://github.com/pykeko/Moorhen-PyKeko/releases). End-user install/upgrade: [docs/install-mac.md](docs/install-mac.md).
 
-See `coot/moorhen-wrappers.cc` to see use of `EMSCRIPTEN_BINDINGS` to expose Coot methods to the web browser.
+## Documentation
 
-Any program you write, which uses the *subset* of Coot, Clipper, code which this project compiles to WASM, can
-itself be compiled to WASM and used within node or Web Browser. Studying the examples should show you to do I/O, which is
-different in the 2 cases. If you require more classes or methods from the libraries to be exposed to JavaScript, then changes need to be made to
-`coot/moorhen-wrappers.cc`. This should only be necessary for browser usage - in node your whole program can be written in C++.
+- **[README-MH.md](README-MH.md)** — full feature reference + keyboard shortcuts
+- **[PROJECT-NOTES.md](PROJECT-NOTES.md)** — build, new-machine setup, implementation writeups
+- **[docs/install-mac.md](docs/install-mac.md)** — end-user install & upgrade
+- **[docs/pymol-translator.md](docs/pymol-translator.md)** — PyMOL command reference
+- **[MOORHEN-UPSTREAM-README.md](MOORHEN-UPSTREAM-README.md)** — upstream Moorhen's original README
 
-## **References**
+## License
 
-* Emscripten
-    *   [https://emscripten.org/](https://emscripten.org/)
-    *   [Emscripten: An LLVM-to-JavaScript Compiler](https://github.com/emscripten-core/emscripten/blob/main/docs/paper.pdf)
-* Coot
-    * P. Emsley; B. Lohkamp; W.G. Scott; Cowtan (2010). *Features and Development of Coot*, Acta Crystallographica. **D66 (4)** p486–501.
-* Privateer
-    * Agirre, J., Iglesias-Fernández, J., Rovira, C., Davies, G.J., Wilson, K.S. and Cowtan, K.D., (2015), *Privateer: software for the conformational validation of carbohydrate structures*, Nature Structural and Molecular Biology **22(11)**, p.833.
-    * Bagdonas, H., Ungar, D. and Agirre, J., (2020), *Leveraging glycomics data in glycoprotein 3D structure validation with Privateer*, Beilstein Journal of Organic Chemistry, **16(1)**, p2523-2533.
-* Clipper
-    * Cowtan K (2003), *The Clipper C++ libraries for X‐ray crystallography*, IUCr Comput Comm Newslett **2**, p4–9
-* CCP4
-    * Winn MD, Ballard CC, Cowtan KD, Dodson EJ, Emsley P, Evans PR, Keegan RM, Krissinel EB, Leslie AGW, McCoy A, McNicholas SJ, Murshudov GN, Pannu NS, Potterton EA, Powell HR, Read RJ, Vagin A, Wilson KS (2011), *Overview of the CCP4 suite and current developments*, Acta Cryst **D67**, p235–242. 
-* Gemmi
-    *   [https://github.com/project-gemmi/gemmi](https://github.com/project-gemmi/gemmi)
-* Gesamt
-    *   Krissinel E. (2012), *Enhanced fold recognition using efficient short fragment clustering*, Journal of molecular biochemistry, **1(2)**, p76–85.
-* ProSMART
-    * R.A. Nicholls, M. Fischer, S. McNicholas and G.N. Murshudov (2014) *Conformation-Independent Structural Comparison of Macromolecules with ProSMART.* Acta Cryst. **D70**, p2487-2499.
-* GSL
-    * M. Galassi et al, GNU Scientific Library Reference Manual (3rd Ed.), ISBN 0954612078
-    * https://www.gnu.org/software/gsl/
-* FFTW
-    *   Frigo, Matteo and Johnson, Steven G. (2005), *The Design and Implementation of FFTW3*, Proceedings of the IEEE **93(2)**, p216-231.
-* RDKit
-    *  RDKit: Open-source cheminformatics [https://www.rdkit.org](https://www.rdkit.org)
-* Boost
-    * Boost C++ libraries [https://www.boost.org/users/license.html](https://www.boost.org/users/license.html)
-* GLM
-    * Open GL Mathematics [https://github.com/g-truc/glm](https://github.com/g-truc/glm)
-* Eigen C++ Template Library
-    * Eigen: a c++ linear algebra library. [Libraries for scientific computing](http://www.association-aristote.fr/doku.php/public:seminaires:seminaire-2013-05-15). Ecole Polytechnique, May 15th, 2013
-* Freetype
-    * FreeType is a freely available software library to render fonts. [https://www.freetype.org](https://www.freetype.org)
-* Igraph
-    * Csardi G, Nepusz T (2006). *“The igraph software package for complex network research.”* InterJournal, Complex Systems, 1695. [https://igraph.org](https://igraph.org).
-    * Csárdi G, Nepusz T, Traag V, Horvát S, Zanini F, Noom D, Müller K (2024). *igraph: Network Analysis and Visualization in R.* [https://doi.org/10.5281/zenodo.7682609](https://doi.org/10.5281/zenodo.7682609), R package version 2.1.1, [https://CRAN.R-project.org/package=igraph](https://CRAN.R-project.org/package=igraph) .
-* JsonCPP
-    * [https://github.com/open-source-parsers/jsoncpp](https://github.com/open-source-parsers/jsoncpp)
-* Libpng
-    * [https://github.com/pnggroup/libpng](https://github.com/pnggroup/libpng)
-* libsigcplusplus
-    * [https://libsigcplusplus.github.io/libsigcplusplus/](https://libsigcplusplus.github.io/libsigcplusplus/)
-* Privateer
-    * The Web app: Dialpuri, J. S., Bagdonas, H., Schofield, L. C., Pham, P. T., Holland, L., Bond, P. S., Sánchez Rodríguez, F., McNicholas, S. J. & Agirre, J. (2024). *Online carbohydrate 3D structure validation with the Privateer web app.* Acta Cryst. **F80**, 30-35.
-    * General Privateer citation (old): Agirre, J., Iglesias-Fernández, J., Rovira, C., Davies, G.J., Wilson, K.S. and Cowtan, K.D., 2015. *Privateer: software for the conformational validation of carbohydrate structures.* Nature Structural and Molecular Biology, **22(11)**, p.833.
-    * Glycomics powered validation: Bagdonas, H., Ungar, D. and Agirre, J., 2020. *Leveraging glycomics data in glycoprotein 3D structure validation with Privateer.* Beilstein Journal of Organic Chemistry, **16(1)**, 2523-2533.
-    * Theory behind Privateer: Agirre, J., 2017. *Strategies for carbohydrate model building, refinement and validation.* Acta Crystallographica Section D, **73(2)**, pp.171-186.
-    * Torsional analyses: Dialpuri, J. S., Bagdonas, H., Atanasova, M., Schofield, L. C., Hekkelman, M. L., Joosten, R. P. & Agirre, J., 2023. *Analysis and validation of overall N-glycan conformation in Privateer.* Acta Crystallographica Section D, **79**, 462-472.
-* Zlib
-    *  Adler, Mark (22 January 2024). "[Zlib-announce](https://madler.net/pipermail/zlib-announce_madler.net/2024/000015.html) zlib 1.3.1 released". Retrieved 23 January 2024.
-* PubChem
-    * Kim S, Chen J, Cheng T, Gindulyte A, He J, He S, Li Q, Shoemaker BA, Thiessen PA, Yu B, Zaslavsky L, Zhang J, Bolton EE. PubChem 2023 update. Nucleic Acids Res. 2023 Jan 6;51(D1):D1373-D1380. [https://doi.org/10.1093/nar/gkac956](https://doi.org/10.1093/nar/gkac956). PMID: 36305812
-* SMILES
-    * Weininger, David *SMILES, a chemical language and information system. 1. Introduction to methodology and encoding rules* Journal of Chemical Information and Computer Sciences **28(1)**, p31-36 (1988) [https://doi.org/10.1021/ci00057a005](https://doi.org/10.1021/ci00057a005)
+Fork of [moorhen-coot/Moorhen](https://github.com/moorhen-coot/Moorhen), under upstream's **BSD-3-Clause** license (Copyright STFC) — see [COPYING](COPYING).
