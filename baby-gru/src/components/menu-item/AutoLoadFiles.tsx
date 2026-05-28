@@ -37,18 +37,42 @@ export const AutoLoadFiles = () => {
         document.body.click();
     };
 
+    // Under the PyKeko Electron wrapper, route "Open Files" through a native OS dialog
+    // rooted at the app's working directory (browser <input type=file> can't set a start
+    // directory). The wrapper reads the chosen files, loads them via the loadFiles control
+    // verb, and remembers the last-used folder. Falls back to the browser input elsewhere.
+    const nativeOpen = (window as any).__moorhenControl?.openFiles;
+    const nativeOpenHandler = async () => {
+        setIsLoading(true);
+        try { await nativeOpen(); }
+        catch (e) { console.warn("native open failed", e); }
+        finally { setIsLoading(false); document.body.click(); }
+    };
+
     return (
         <>
             <span className="moorhen__input__label-menu">Open Files</span>
-            <MoorhenFileInput
-                accept=".pdb, .mmcif, .cif, .ent, .mol, .mtz, .map, .pb,.mrc"
-                multiple={true}
-                isLoading={isLoading}
-                className="moorhen_menu-custom-left-margin"
-                onChange={e => {
-                    autoLoadHandler(e);
-                }}
-            />
+            {typeof nativeOpen === "function" ? (
+                <button
+                    type="button"
+                    className="moorhen_menu-custom-left-margin moorhen__input-files-upload"
+                    onClick={nativeOpenHandler}
+                    disabled={isLoading}
+                    style={{ cursor: "pointer", border: "none", background: "transparent", textAlign: "left", font: "inherit", padding: 0 }}
+                >
+                    {isLoading ? "Opening…" : "Browse…"}
+                </button>
+            ) : (
+                <MoorhenFileInput
+                    accept=".pdb, .mmcif, .cif, .ent, .mol, .mtz, .map, .pb,.mrc"
+                    multiple={true}
+                    isLoading={isLoading}
+                    className="moorhen_menu-custom-left-margin"
+                    onChange={e => {
+                        autoLoadHandler(e);
+                    }}
+                />
+            )}
         </>
     );
 };

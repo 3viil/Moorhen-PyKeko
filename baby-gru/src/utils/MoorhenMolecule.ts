@@ -1028,6 +1028,18 @@ export class MoorhenMolecule {
                 this.fetchDefaultColourRules(),
                 this.getMoleculeDiameter(),
             ]);
+            // Show hydrogens by default if the loaded structure already contains them
+            // (Coot-style: only when H atoms are actually present — most deposited X-ray
+            // models have none; refined / neutron / cryo-EM models often do). The first
+            // draw happens in the caller's fetchIfDirtyAndDraw(), which reads showHs.
+            try {
+                if (this.gemmiStructure && !this.gemmiStructure.isDeleted() &&
+                    window.CCP4Module.has_hydrogen(this.gemmiStructure.first_model())) {
+                    this.defaultBondOptions.showHs = true;
+                }
+            } catch (e) {
+                console.warn("has_hydrogen check failed; leaving hydrogens hidden", e);
+            }
             return this;
         } catch (err) {
             console.log("Error in loadToCootFromString", err);

@@ -506,7 +506,24 @@ export const autoOpenFiles = async (
 
     const existingMolecules = store.getState().molecules.moleculeList;
 
-    for (const file of files) {
+    // Load restraints/dictionary CIFs AFTER coordinates, regardless of input order, so a
+    // ligand dictionary attaches to molecules loaded in the SAME batch rather than being
+    // misread as a standalone monomer. Matters for CLI launches like
+    // `pykeko model.pdb ligand.cif` and for drag-dropping a model + dictionary together.
+    // (Stable sort: only dictionary CIFs move to the end; all other files keep their order,
+    // so the .pb "load first session only" break semantics below are unaffected.)
+    const isRestraintsCif = async (file: File): Promise<boolean> => {
+        if (!/\.(cif|mmcif)$/i.test(file.name)) return false;
+        const content = await file.text();
+        return /data_comp_\S/i.test(content) && !/_atom_site\.\s/.test(content);
+    };
+    const dictFlags = await Promise.all(files.map(isRestraintsCif));
+    const orderedFiles = files
+        .map((file, i) => ({ file, isDict: dictFlags[i] }))
+        .sort((a, b) => Number(a.isDict) - Number(b.isDict))
+        .map(entry => entry.file);
+
+    for (const file of orderedFiles) {
         //Structures
         if (file.name.endsWith(".pdb") || file.name.endsWith(".ent") || file.name.endsWith(".cif") || file.name.endsWith(".mmcif")) {
             const content = await file.text();
@@ -514,9 +531,13 @@ export const autoOpenFiles = async (
             // If the file is a CIF dictionary (has data_comp_*) AND we have molecules loaded,
             // attach it to those molecules rather than creating a new monomer molecule
             const isDictionary = /data_comp_\S/i.test(content) && !/_atom_site\.\s/.test(content);
-            if (isDictionary && existingMolecules.length > 0) {
-                console.log(`File ${file.name} looks like a CIF dictionary; attaching to ${existingMolecules.length} existing molecule(s)`);
-                for (const molecule of existingMolecules) {
+            // Live list: molecules that existed before this batch PLUS any created so far in
+            // it (coordinates are ordered ahead of dictionaries above), so a same-batch
+            // model+dictionary pair attaches correctly instead of spawning a monomer.
+            const liveMolecules = [...existingMolecules, ...moleculesCreated];
+            if (isDictionary && liveMolecules.length > 0) {
+                console.log(`File ${file.name} looks like a CIF dictionary; attaching to ${liveMolecules.length} molecule(s)`);
+                for (const molecule of liveMolecules) {
                     await molecule.addDict(content);
                     await molecule.redraw();
                     dispatch(triggerUpdate(molecule.molNo));

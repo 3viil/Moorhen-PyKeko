@@ -690,6 +690,15 @@ export const subMenuMap: SubMenuMap = {
         label: "Preferences",
         items: [
             {
+                id: "install-cli-launcher",
+                label: "Install command-line launcher",
+                type: "customJSX",
+                keywords: ["cli", "terminal", "command", "launcher", "pykeko", "shell"],
+                description: "Install the `pykeko` command so you can launch from a terminal",
+                jsx: MenuItems.InstallCliLauncher,
+            },
+            { type: "separator" },
+            {
                 id: "expand-display-cards",
                 label: "Expand display cards after file upload",
                 type: "preferenceSwitch",

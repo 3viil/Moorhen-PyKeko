@@ -19,11 +19,12 @@ type ScriptMode = "javascript" | "pymol";
 const MODE_STORAGE_KEY = "moorhen.scripting.mode";
 
 const loadInitialMode = (): ScriptMode => {
+    // PyKeko default: PyMOL (crystallographers' lingua franca; the JS mode is opt-in).
     try {
         const v = localStorage.getItem(MODE_STORAGE_KEY);
-        return v === "pymol" ? "pymol" : "javascript";
+        return v === "javascript" ? "javascript" : "pymol";
     } catch {
-        return "javascript";
+        return "pymol";
     }
 };
 
