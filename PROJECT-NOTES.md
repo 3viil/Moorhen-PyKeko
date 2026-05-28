@@ -28,7 +28,7 @@ Two apps installed in `/Applications`:
 
 ## Background
 
-Coot version 0.9.x, the ubiquitous model-building tool for X-ray crystallography, is preferred by crystallographers, but doesn't run on macOS Tahoe (which breaks XQuartz). Although Coot 1.x does run on MacOS, a number of UX changes make it less favored.
+Coot version 0.9.x, the ubiquitous model-building tool for X-ray crystallography, is preferred by crystallographers, but doesn't run on macOS Tahoe (which breaks XQuartz). Although Coot 1.x does run on macOS, a number of UX changes make it less favored.
 
 **Moorhen** is the same Coot C++ engine compiled to WebAssembly with a modern React/WebGL frontend, developed by the same CCP4/MRC-LMB team. It runs natively in browsers and as an Electron app on Tahoe — no XQuartz needed.
 
