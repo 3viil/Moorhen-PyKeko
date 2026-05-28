@@ -658,7 +658,7 @@ resulting Moorhen state (Redux store + molecule representations).
 test("Tier 1: fetch + zoom + show cartoon + color", async () => {
   const env = makeMockEnv();
   await translator.exe(`
-    fetch 1crn
+    fetch 7sj3
     bg_color black
     hide everything
     show cartoon
