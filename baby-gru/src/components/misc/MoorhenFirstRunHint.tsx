@@ -79,11 +79,11 @@ pykeko script.pml    # run a PyMOL-style script`}
                 </Typography>
             </DialogContent>
             <DialogActions>
-                <MoorhenButton variant="text" onClick={dismiss}>
+                <MoorhenButton variant="secondary" onClick={dismiss}>
                     {installed ? "Got it" : "Maybe later"}
                 </MoorhenButton>
                 {!installed && (
-                    <MoorhenButton variant="contained" onClick={handleInstall}>
+                    <MoorhenButton variant="primary" onClick={handleInstall}>
                         Install now…
                     </MoorhenButton>
                 )}
