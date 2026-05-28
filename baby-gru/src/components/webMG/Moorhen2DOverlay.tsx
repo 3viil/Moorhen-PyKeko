@@ -167,7 +167,11 @@ export const drawOn2DContext = (canvas2D_ctx: CanvasRenderingContext2D, width: n
            canvas2D_ctx.fillStyle = "white"
         else
            canvas2D_ctx.fillStyle = "black"
-        canvas2D_ctx.fillText(t,10,help_y)
+        // Right-align to the viewport's right edge so the shortcut list doesn't sit
+        // under the left-hand menu bar (this is painted on a 2D canvas overlay, not a
+        // DOM element, so placement is by x-coordinate, not CSS).
+        const textWidth = canvas2D_ctx.measureText(t).width
+        canvas2D_ctx.fillText(t, width - textWidth - 10, help_y)
         help_y += actualHeight
         canvas2D_ctx.restore()
     })

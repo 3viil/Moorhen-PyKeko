@@ -143,6 +143,89 @@ export function createControlApi(ctx: Ctx) {
       return { molNo: map.molNo, name: map.name, isDifference: map.isDifference };
     },
 
+    // Batch-load a set of files (the CLI-launch path: `pykeko a.pdb b.mtz c.cif`).
+    // fileSpecs: [{ name, dataBase64 }]. Loads in type order regardless of input order —
+    // coordinates first, then restraints/dictionary CIFs (attached to the molecules just
+    // loaded, NOT spawned as monomers), then maps. A .cif is classified by content
+    // (data_comp_* without _atom_site) exactly as autoOpenFiles does.
+    async loadFiles(fileSpecs: { name: string; dataBase64: string }[]) {
+      const decoder = new TextDecoder();
+      const isCoordExt = (n: string) => /\.(pdb|ent|cif|mmcif)$/i.test(n);
+      const isMtz = (n: string) => /\.mtz$/i.test(n);
+      const isMapExt = (n: string) => /\.(mrc|map|ccp4)(\.gz)?$/i.test(n);
+
+      const coordFiles: { name: string; text: string }[] = [];
+      const dictFiles: { name: string; text: string }[] = [];
+      const mtzFiles: { name: string; bytes: Uint8Array }[] = [];
+      const mapFiles: { name: string; base64: string }[] = [];
+
+      for (const spec of fileSpecs) {
+        if (isCoordExt(spec.name)) {
+          const text = decoder.decode(b64ToUint8(spec.dataBase64));
+          const isDict = /data_comp_\S/i.test(text) && !/_atom_site\.\s/.test(text);
+          (isDict ? dictFiles : coordFiles).push({ name: spec.name, text });
+        } else if (isMtz(spec.name)) {
+          mtzFiles.push({ name: spec.name, bytes: b64ToUint8(spec.dataBase64) });
+        } else if (isMapExt(spec.name)) {
+          mapFiles.push({ name: spec.name, base64: spec.dataBase64 });
+        }
+        // unknown extensions (e.g. .pb sessions, .json) are not handled via the CLI path yet
+      }
+
+      const results: any[] = [];
+      const preExisting = getMolecules();
+      const loadedMols: any[] = [];
+
+      // 1. Coordinates — each becomes a molecule
+      for (const f of coordFiles) {
+        const mol = new MoorhenMolecule(commandCentre, store, monomerLibraryPath);
+        await mol.loadToCootFromString(f.text, f.name);
+        if (mol.molNo === -1) { results.push({ file: f.name, type: "error", error: "could not read as coordinates" }); continue; }
+        await mol.fetchIfDirtyAndDraw("CBs");
+        dispatch(addMolecule(mol));
+        dispatch(showMolecule(mol));
+        loadedMols.push(mol);
+        results.push({ file: f.name, type: "molecule", molNo: mol.molNo, atomCount: await liveAtomCount(mol) });
+      }
+
+      // 2. Restraints dictionaries — attach to molecules (existing + just-loaded), never a new molecule
+      const targetMols = [...preExisting, ...loadedMols];
+      for (const f of dictFiles) {
+        if (targetMols.length === 0) {
+          // Nothing to attach to — register globally so any later load can use it
+          await commandCentre.current.cootCommand({ returnType: "status", command: "read_dictionary_string", commandArgs: [f.text, -999999], changesMolecules: [] }, false);
+          results.push({ file: f.name, type: "dictionary", attachedTo: "global" });
+        } else {
+          for (const mol of targetMols) { await mol.addDict(f.text); await mol.redraw(); dispatch(triggerUpdate(mol.molNo)); }
+          results.push({ file: f.name, type: "dictionary", attachedTo: targetMols.map((m) => m.molNo) });
+        }
+      }
+
+      // 3. Maps — MTZ via auto-read (detects F/PHI + difference columns), CCP4/MRC direct
+      for (const f of mtzFiles) {
+        const file = new File([f.bytes], f.name);
+        const newMaps = await MoorhenMap.autoReadMtz(file, commandCentre, store);
+        for (let i = 0; i < newMaps.length; i++) {
+          const m = newMaps[i];
+          dispatch(addMap(m));
+          await m.drawMapContour();
+          if (i === 0) { dispatch(setActiveMap(m)); await m.setActive(); }
+          results.push({ file: f.name, type: "map", molNo: m.molNo, isDifference: m.isDifference });
+        }
+        if (newMaps.length === 0) results.push({ file: f.name, type: "error", error: "no maps read from MTZ" });
+      }
+      for (const f of mapFiles) {
+        const isDiff = /_fofc\.|_diff\./i.test(f.name);
+        const r = await this.loadMapFromCcp4(f.base64, f.name, isDiff);
+        results.push({ file: f.name, type: "map", molNo: r.molNo, isDifference: r.isDifference });
+      }
+
+      // Centre on the last coordinates loaded (maps centre themselves only when no molecule present)
+      if (loadedMols.length > 0) await loadedMols[loadedMols.length - 1].centreOn("/*/*/*/*", false, true);
+      repaint();
+      return { loaded: results };
+    },
+
     async setActiveMap(mapMolNo: number) {
       const map = getMaps().find((m) => m.molNo === mapMolNo);
       if (!map) throw new Error("map not found: " + mapMolNo);

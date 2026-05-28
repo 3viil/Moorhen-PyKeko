@@ -59,6 +59,7 @@ export { StepRefinement } from "./StepRefinement";
 export { Grid, ViewLayoutPreferences } from "./ViewLayoutPreferences";
 export { FetchOnlineSources } from "./FetchOnlineSources";
 export { AutoLoadFiles } from "./AutoLoadFiles";
+export { InstallCliLauncher } from "./InstallCliLauncher";
 export { ManageSession } from "./ManageSession";
 export { ExportGltf } from "./ExportGltf";
 export { ExportMenuItem } from "./Export";

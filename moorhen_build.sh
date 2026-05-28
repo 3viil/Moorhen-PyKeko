@@ -1038,5 +1038,9 @@ if [ $BUILD_MOORHEN = true ]; then
     cp -r ${MOORHEN_SOURCE_DIR}/checkout/LhasaReact ${MOORHEN_SOURCE_DIR}/baby-gru/src/
     npm run transpile-graphql-codegen
     cd ${MOORHEN_SOURCE_DIR}/baby-gru/public/MoorhenAssets/
-    ln -sf ${MOORHEN_SOURCE_DIR}/checkout/monomers
+    # monomers is usually already a populated real dir (e.g. extracted from the DMG), in
+    # which case this symlink is redundant and `ln` errors "Operation not permitted" and
+    # (under set -e style flow) aborts the build at the very end — after the WASM is built.
+    # Make it best-effort so a successful build exits 0.
+    [ -e monomers ] || ln -sf ${MOORHEN_SOURCE_DIR}/checkout/monomers 2>/dev/null || true
 fi
