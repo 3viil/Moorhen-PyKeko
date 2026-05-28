@@ -181,10 +181,10 @@ xattr -dr com.apple.quarantine /Applications/PyKeko.app
 ### Window opens but renderer is blank / stuck on "Moorhen is loading…"
 
 The most common cause is a corrupted Electron user-data cache from a previous
-install. Clear it:
+install. Clear it (this resets preferences/backups):
 
 ```bash
-rm -rf "~/Library/Application Support/moorhen-wrapper"
+rm -rf "$HOME/Library/Application Support/pykeko-wrapper"
 ```
 
 Then relaunch the app.
@@ -199,7 +199,7 @@ ls ~/.moorhen-mcp/
 ```
 
 If the directory is empty, the app's control server failed to start. Check
-`/tmp/moorhen-dist.log` for an error.
+`/tmp/pykeko.log` for an error.
 
 If the file is there but Claude can't connect, set the right port:
 
@@ -211,14 +211,29 @@ export MOORHEN_VITE_PORT=$(cat ~/.moorhen-mcp/control-*.json | python3 -c "impor
 
 ### Updating to a newer version
 
-1. Quit the running Moorhen app (Cmd+Q).
-2. Move the existing `/Applications/PyKeko.app` to Trash.
-3. Re-do steps 1–3 above with the new DMG.
+The upgrade is safe and **keeps your settings** — nothing important lives inside
+the `.app` bundle.
 
-User preferences (background colour, default representation, shortcut
-options) live in browser localStorage under
-`~/Library/Application Support/moorhen-wrapper/Local Storage/` and survive
-re-installs.
+1. **Quit** the running app (Cmd+Q) — don't replace it while it's open.
+2. Download the new `PyKeko.dmg` and open it.
+3. Drag `PyKeko.app` onto `/Applications` and choose **Replace** when Finder
+   prompts. (Equivalently: drag the old app to Trash first, then copy the new
+   one in — either is fine.)
+4. **Re-approve Gatekeeper once** — a freshly downloaded DMG is quarantined
+   again, so the unsigned app is blocked on the first launch. Run
+   `xattr -dr com.apple.quarantine /Applications/PyKeko.app`, or right-click the
+   app → **Open**. (Downloading via `gh release download` skips this.)
+
+What carries over automatically (none of it lives in the `.app`):
+
+- **Preferences and session backups** — kept in
+  `"$HOME/Library/Application Support/pykeko-wrapper"`.
+- **The `pykeko` command-line launcher** — `/usr/local/bin/pykeko` points at
+  `/Applications/PyKeko.app`, so it keeps working as long as you install to the
+  default location; no need to reinstall it.
+
+The new version shows a one-time **"What's new"** note on first launch (it's
+version-keyed, so it reappears after each upgrade).
 
 ---
 
@@ -226,9 +241,9 @@ re-installs.
 
 ```bash
 rm -rf /Applications/PyKeko.app
-rm -rf "~/Library/Application Support/moorhen-wrapper"
-rm -rf "~/Library/Caches/moorhen-wrapper"
+rm -rf "$HOME/Library/Application Support/pykeko-wrapper"   # prefs, backups, caches
 rm -rf ~/.moorhen-mcp
+sudo rm -f /usr/local/bin/pykeko   # the command-line launcher, if installed
 ```
 
 ---
