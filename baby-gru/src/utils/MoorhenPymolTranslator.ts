@@ -993,6 +993,9 @@ const cmdSuperpose = async (cmd: PymolCommand, env: any, registry: PymolRegistry
     }
     try {
         // Same path as the Superpose UI: the molecule's SSMSuperpose method.
+        // (Coot's SSM RMSD isn't surfaced — the superpose_results return doesn't
+        // marshal back through the command path and no Moorhen code consumes it;
+        // exposing it would need a dedicated C++ wrapper + WASM rebuild.)
         await mob.molecule.SSMSuperpose(movChain, ref.molecule.molNo, refChain);
         const tag = `${mob.molecule.name}/${movChain} → ${ref.molecule.name}/${refChain}`;
         if (env.enqueueSnackbar) env.dispatch(env.enqueueSnackbar({ message: `Superposed ${tag} (SSM)`, variant: "info" }));
