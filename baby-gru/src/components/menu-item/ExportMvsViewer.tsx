@@ -25,7 +25,11 @@ export const ExportMvsViewer = () => {
         try {
             const mols = await Promise.all(molecules.map(async m => ({
                 name: m.name,
-                mmcif: await m.getAtoms("mmcif"),
+                // PDB rather than mmCIF: Coot's mmCIF writer doesn't tag polymer
+                // residues as polymer, so Mol*'s cartoon path can't fire (see builder).
+                coords: await m.getAtoms("pdb"),
+                // Per-chain colouring needs the actual chain letters (auth_asym_id).
+                chains: (m.sequences || []).map((s: any) => s.chain).filter(Boolean),
             })));
             const mvsJson = buildMvsJson({
                 molecules: mols,

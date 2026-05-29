@@ -13,13 +13,25 @@
 
 export interface MvsMoleculeInput {
     name: string;
-    mmcif: string;
+    /** Coordinate text (PDB format) to embed as a data URL. */
+    coords: string;
+    /** Chain ids (auth_asym_id) used to colour the cartoon rep per-chain. */
+    chains: string[];
 }
 
 export interface MvsExportOptions {
     molecules: MvsMoleculeInput[];
     title?: string;
+    backgroundColor?: string;
 }
+
+// Distinct hexes for chain colouring. MVS's `color` node is uniform-only
+// (no built-in "chain-id rainbow" theme), so we emit one `color` node per
+// chain with an `auth_asym_id` selector. Cycled for >10 chains.
+const CHAIN_PALETTE = [
+    "#9067cf", "#f08e3c", "#5ab4ac", "#d6604d", "#67a9cf",
+    "#fee08b", "#bf812d", "#80cdc1", "#c994c7", "#a6dba0",
+];
 
 // UTF-8-safe base64 (mmCIF is ASCII in practice, but be robust).
 const toBase64 = (text: string): string => {
@@ -34,19 +46,35 @@ const toBase64 = (text: string): string => {
 
 const node = (kind: string, params: any = {}, children: any[] = []) => ({ kind, params, children });
 
-const structureBranch = (mmcif: string) => {
-    const dataUrl = "data:text/plain;base64," + toBase64(mmcif);
+const chainColorNodes = (chains: string[]) =>
+    chains.map((c, i) => node("color", {
+        // Note: ComponentExpressionT uses auth_asym_id (the CIF "author" chain field),
+        // which is the user-facing chain letter (A/B/...). NOT chain_id.
+        selector: { auth_asym_id: c },
+        color: CHAIN_PALETTE[i % CHAIN_PALETTE.length],
+    }));
+
+const structureBranch = (coords: string, chains: string[]) => {
+    const dataUrl = "data:text/plain;base64," + toBase64(coords);
     return node("download", { url: dataUrl }, [
-        node("parse", { format: "mmcif" }, [
+        // PDB rather than mmCIF: PyKeko/Coot's mmCIF writer doesn't emit
+        // _entity_poly records and tags every atom as HETATM, so Mol*'s
+        // `polymer` selector matches nothing (no cartoon). PDB's ATOM/HETATM
+        // distinction is honoured correctly by Coot's writer.
+        node("parse", { format: "pdb" }, [
             node("structure", { type: "model" }, [
                 node("component", { selector: "polymer" }, [
-                    node("representation", { type: "cartoon" }),
+                    node("representation", { type: "cartoon" }, chainColorNodes(chains)),
                 ]),
                 node("component", { selector: "ligand" }, [
-                    node("representation", { type: "ball_and_stick" }),
+                    node("representation", { type: "ball_and_stick" }, [
+                        node("color", { color: "lightgreen" }),
+                    ]),
                 ]),
                 node("component", { selector: "ion" }, [
-                    node("representation", { type: "ball_and_stick" }),
+                    node("representation", { type: "ball_and_stick" }, [
+                        node("color", { color: "orange" }),
+                    ]),
                 ]),
             ]),
         ]),
@@ -54,7 +82,11 @@ const structureBranch = (mmcif: string) => {
 };
 
 export function buildMvsJson(opts: MvsExportOptions): string {
-    const children = opts.molecules.map(m => structureBranch(m.mmcif));
+    const bg = opts.backgroundColor || "#000000";
+    const children: any[] = [
+        node("canvas", { background_color: bg }),
+        ...opts.molecules.map(m => structureBranch(m.coords, m.chains)),
+    ];
     const doc = {
         metadata: {
             title: opts.title || "PyKeko export",
