@@ -105,7 +105,7 @@ export class ScreenRecorder  {
         link.click();
     }
 
-    takeScreenShot = async(filename: string, doTransparentBackground: boolean = false) => {
+    takeScreenShot = async(filename: string, doTransparentBackground: boolean = false, opts: { width?: number; height?: number; highQuality?: boolean } = {}) => {
 
         let target_w: number;
         let target_h: number;
@@ -128,7 +128,20 @@ export class ScreenRecorder  {
         const canvasHeight = canvasSize[1]
 
         //Transparent backgound currently only works with WebGL2
+        // High-quality export: force ambient occlusion + shadows on for the capture render, restore after.
+        const _gl: any = this.glRef.current;
+        let _prevSSAO: boolean, _prevShadow: boolean;
+        if (opts.highQuality && _gl) {
+            _prevSSAO = _gl.doSSAO; _prevShadow = _gl.doShadow;
+            _gl.doSSAO = true; _gl.doShadow = true;
+            if (!_prevShadow) { try { _gl.initTextureFramebuffer(); } catch (e) { /* ensure shadow buffer */ } }
+        }
         pixels = this.glRef.current.getPixelData(doTransparentBackground)
+        if (opts.highQuality && _gl) {
+            _gl.doSSAO = _prevSSAO; _gl.doShadow = _prevShadow;
+            if (!_prevShadow) { try { _gl.initTextureFramebuffer(); } catch (e) { /* restore buffers */ } }
+            try { _gl.drawScene(); } catch (e) { /* restore live view */ }
+        }
 
         if(!isWebGL2){
 
@@ -195,27 +208,49 @@ export class ScreenRecorder  {
         }
         await loadLatexThings()
 
-        Promise.all(promises).then(images => {
-            for(let i_img=0;i_img<images.length;i_img++){
-                const img_frac = {x:imageOverlays[i_img].x,y:imageOverlays[i_img].y,img:images[i_img],width:imageOverlays[i_img].width,height:imageOverlays[i_img].height,zIndex:imageOverlays[i_img].zIndex}
-                imgFracs.push(img_frac)
-            }
+        const images: any[] = await Promise.all(promises)
+        for(let i_img=0;i_img<images.length;i_img++){
+            const img_frac = {x:imageOverlays[i_img].x,y:imageOverlays[i_img].y,img:images[i_img],width:imageOverlays[i_img].width,height:imageOverlays[i_img].height,zIndex:imageOverlays[i_img].zIndex}
+            imgFracs.push(img_frac)
+        }
 
-            drawOn2DContext(ctx,saveCanvas.width,saveCanvas.height,saveCanvas.width/window.visualViewport.width,[],imgFracs,quat,0, this.store)
-            drawOn2DContext(ctx,saveCanvas.width,saveCanvas.height,saveCanvas.width/window.visualViewport.width,[],imgFracs,quat,1, this.store)
-            drawOn2DContext(ctx,saveCanvas.width,saveCanvas.height,saveCanvas.width/window.visualViewport.width,[],imgFracs,quat,2, this.store)
-            drawOn2DContext(ctx,saveCanvas.width,saveCanvas.height,saveCanvas.width/window.visualViewport.width,[],imgFracs,quat,3, this.store)
-            drawOn2DContext(ctx,saveCanvas.width,saveCanvas.height,saveCanvas.width/window.visualViewport.width,[],imgFracs,quat,4, this.store)
+        for(let phase=0; phase<5; phase++){
+            drawOn2DContext(ctx,saveCanvas.width,saveCanvas.height,saveCanvas.width/window.visualViewport.width,[],imgFracs,quat,phase, this.store)
+        }
 
+        // Resample to the requested output dimensions. We never upscale past the
+        // supersampled capture (the ~4096 render is the detail ceiling), so the
+        // top preset / a large `ray` value simply lands at the ceiling.
+        let outCanvas: HTMLCanvasElement = saveCanvas
+        const reqW = opts.width ? Math.min(Math.round(opts.width), saveCanvas.width) : saveCanvas.width
+        const reqH = opts.height ? Math.min(Math.round(opts.height), saveCanvas.height)
+                                 : Math.round(reqW * saveCanvas.height / saveCanvas.width)
+        if (reqW !== saveCanvas.width || reqH !== saveCanvas.height) {
+            const fc = document.createElement("canvas")
+            fc.width = reqW; fc.height = reqH
+            const fctx = fc.getContext("2d")
+            fctx.imageSmoothingEnabled = true
+            ;(fctx as any).imageSmoothingQuality = "high"
+            fctx.drawImage(saveCanvas, 0, 0, reqW, reqH)
+            outCanvas = fc
+        }
+
+        const dataUrl = outCanvas.toDataURL("image/png")
+        const ctrl = (window as any).__moorhenControl
+        if (ctrl && typeof ctrl.saveImage === "function") {
+            // Desktop app: native Save panel (defaults to the launch directory).
+            try { await ctrl.saveImage(dataUrl, filename) }
+            catch (e) { console.warn("[screenshot] native save failed, falling back to download", e) }
+        } else {
             let link: any = document.getElementById('download_image_link');
             if (!link) {
                 link = document.createElement('a');
                 link.id = 'download_image_link';
-                link.download = filename;
                 document.body.appendChild(link);
             }
-            link.href = saveCanvas.toDataURL("image/png").replace("image/png", "image/octet-stream");
+            link.download = filename;
+            link.href = dataUrl.replace("image/png", "image/octet-stream");
             link.click();
-        })
+        }
     }
 }

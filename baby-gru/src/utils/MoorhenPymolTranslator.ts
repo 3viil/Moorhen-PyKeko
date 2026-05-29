@@ -861,22 +861,36 @@ const cmdDistance = async (cmd: PymolCommand, env: any, registry: PymolRegistry)
 };
 
 const cmdPng = async (cmd: PymolCommand, env: any) => {
-    let filename = cmd.args[0]?.replace(/['"]/g, "").trim() ?? "moorhen_screenshot.png";
+    // PyMOL: png filename [, width [, height [, dpi [, ray ]]]]
+    let filename = cmd.args[0]?.replace(/['"]/g, "").trim() || "moorhen_screenshot.png";
     if (!filename.toLowerCase().endsWith(".png")) filename += ".png";
     const rec = env.videoRecorderRef?.current;
     if (!rec) {
         console.warn(`[pymol:${cmd.lineNo}] png: screen-recorder not ready (open Moorhen via the UI first)`);
         return;
     }
-    try { await rec.takeScreenShot(filename, false); }
+    const width = parseInt(cmd.args[1]) || undefined;
+    const height = parseInt(cmd.args[2]) || undefined;
+    // `png ..., ray=1` (5th positional) requests the high-quality render.
+    const highQuality = /^(1|on|true)$/i.test((cmd.args[4] || "").trim());
+    try { await rec.takeScreenShot(filename, false, { width, height, highQuality }); }
     catch (e) { console.warn(`[pymol:${cmd.lineNo}] png failed:`, e); }
 };
 
 const cmdRay = async (cmd: PymolCommand, env: any) => {
-    // PyMOL `ray <w>, <h>` does software ray-tracing. Moorhen has no offline
-    // renderer; we fall back to the same canvas capture as png, and warn.
-    console.warn(`[pymol:${cmd.lineNo}] ray: Moorhen has no ray-tracer; falling back to a rasterized screenshot`);
-    await cmdPng({ ...cmd, args: cmd.args.slice(2) }, env);
+    // PyMOL `ray [width [, height]]` — width-first; height derives from the
+    // viewport aspect ratio when omitted. PyKeko renders a high-quality image
+    // (supersampled + ambient occlusion + shadows), capped at the ~4096 px
+    // render ceiling, and saves it (native Save panel in the desktop app).
+    const rec = env.videoRecorderRef?.current;
+    if (!rec) {
+        console.warn(`[pymol:${cmd.lineNo}] ray: screen-recorder not ready (open Moorhen via the UI first)`);
+        return;
+    }
+    const width = parseInt(cmd.args[0]) || undefined;
+    const height = parseInt(cmd.args[1]) || undefined;
+    try { await rec.takeScreenShot("moorhen_ray.png", false, { width, height, highQuality: true }); }
+    catch (e) { console.warn(`[pymol:${cmd.lineNo}] ray failed:`, e); }
 };
 
 // ---------- dispatcher ----------
