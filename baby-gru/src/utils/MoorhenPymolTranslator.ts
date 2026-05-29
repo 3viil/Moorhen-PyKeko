@@ -893,6 +893,114 @@ const cmdRay = async (cmd: PymolCommand, env: any) => {
     catch (e) { console.warn(`[pymol:${cmd.lineNo}] ray failed:`, e); }
 };
 
+// ---------- labels ----------
+
+// Per-atom text tokens supported in a `label` expression.
+const LABEL_TOKENS: Record<string, (a: any) => string> = {
+    resn: a => a.res_name,
+    resi: a => String(a.res_no),
+    resv: a => String(a.res_no),
+    name: a => (a.name || "").trim(),
+    chain: a => a.chain_id,
+    elem: a => a.element,
+    b: a => (a.tempFactor ?? 0).toFixed(2),
+    q: a => (a.occupancy ?? 0).toFixed(2),
+};
+
+// Curated subset of PyMOL's label expression (full Python eval is out of scope,
+// like iterate/alter). Supports: a quoted literal ("active site"); a bare token
+// (resn/resi/name/chain/elem/b/q); and a Python-style `"fmt" % (tokens)` string
+// (e.g. "%s/%s" % (resn, resi)). Anything else warns once and falls back to "<resn> <resi>".
+const evalLabelExpr = (expr: string, atom: any, lineNo: number, warned: { v: boolean }): string => {
+    const e = (expr || "").trim();
+    if (!e) return "";
+    const fmt = e.match(/^(['"])([\s\S]*)\1\s*%\s*\(?([\s\S]*?)\)?$/);
+    if (fmt) {
+        const toks = fmt[3].split(",").map(s => s.trim()).filter(Boolean);
+        let i = 0;
+        return fmt[2].replace(/%[-0-9.]*[sdifg]/g, () => {
+            const t = toks[i++];
+            const fn = t && LABEL_TOKENS[t.toLowerCase()];
+            return fn ? fn(atom) : (t ?? "");
+        });
+    }
+    const lit = e.match(/^(['"])([\s\S]*)\1$/);
+    if (lit) return lit[2];
+    const fn = LABEL_TOKENS[e.toLowerCase()];
+    if (fn) return fn(atom);
+    if (!warned.v) {
+        console.warn(`[pymol:${lineNo}] label: expression ${JSON.stringify(expr)} not supported — use a quoted literal, a token (resn/resi/name/chain/elem/b/q), or "fmt" % (tokens); falling back to "<resn> <resi>"`);
+        warned.v = true;
+    }
+    return `${atom.res_name} ${atom.res_no}`;
+};
+
+const cmdLabel = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
+    // PyMOL: label selection, expression. An empty expression clears ALL labels
+    // (PyKeko doesn't track labels per selection).
+    const selArg = cmd.args[0]?.trim();
+    const expr = cmd.args.slice(1).join(",").trim();
+    const gl = (window as any).__moorhen_glRef__?.current;
+    if (!gl) { console.warn(`[pymol:${cmd.lineNo}] label: renderer not ready (open Moorhen via the UI first)`); return; }
+    if (!expr || expr === '""' || expr === "''") {
+        gl.labelledAtoms = [];
+        try { gl.updateLabels?.(); gl.drawScene?.(); } catch (e) { /* renderer not ready */ }
+        if (env.enqueueSnackbar) env.dispatch(env.enqueueSnackbar({ message: "Cleared labels", variant: "info" }));
+        return;
+    }
+    if (!selArg) { console.warn(`[pymol:${cmd.lineNo}] label: needs a selection, e.g. \`label name CA, resn\``); return; }
+    const targets = await resolveSelection(selArg, env, registry);
+    if (targets.length === 0) { console.warn(`[pymol:${cmd.lineNo}] label: nothing matched "${selArg}"`); return; }
+    if (!Array.isArray(gl.labelledAtoms)) gl.labelledAtoms = [];
+    const warned = { v: false };
+    let n = 0;
+    for (const { molecule, cid } of targets) {
+        const atoms = await molecule.gemmiAtomsForCid(cid);
+        const entries = atoms.map((a: any) => ({ label: evalLabelExpr(expr, a, cmd.lineNo, warned), x: a.x, y: a.y, z: a.z }));
+        if (entries.length) { gl.labelledAtoms.push(entries); n += entries.length; }
+    }
+    try { gl.updateLabels?.(); gl.drawScene?.(); } catch (e) { /* renderer not ready */ }
+    if (env.enqueueSnackbar) env.dispatch(env.enqueueSnackbar({ message: `Labelled ${n} atom${n === 1 ? "" : "s"}`, variant: "info" }));
+};
+
+// ---------- superposition ----------
+
+// PyMOL's super / cealign / align / fit. PyKeko maps ALL of them to Coot's SSM
+// secondary-structure superposition (the sequence-independent auto-matcher the
+// Superpose UI is built on); PyMOL's four distinct algorithms are not replicated.
+// `<cmd> mobile, target` moves `mobile` onto `target` and reports the RMSD.
+const cmdSuperpose = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
+    const name = (cmd as any).cmd;
+    const mobArg = cmd.args[0]?.trim();
+    const refArg = cmd.args[1]?.trim();
+    if (!mobArg || !refArg) { console.warn(`[pymol:${cmd.lineNo}] ${name}: needs two selections, e.g. \`${name} mobile, target\``); return; }
+    const mob = await resolveSelectionSingle(mobArg, env, registry);
+    const ref = await resolveSelectionSingle(refArg, env, registry);
+    if (!mob.molecule) { console.warn(`[pymol:${cmd.lineNo}] ${name}: cannot resolve mobile "${mobArg}"`); return; }
+    if (!ref.molecule) { console.warn(`[pymol:${cmd.lineNo}] ${name}: cannot resolve target "${refArg}"`); return; }
+    if (mob.molecule.molNo === ref.molecule.molNo) { console.warn(`[pymol:${cmd.lineNo}] ${name}: mobile and target are the same molecule`); return; }
+    // Chain from the selection's cid if one is given, else the molecule's first
+    // sequence chain — exactly how the Superpose UI resolves chains (no gemmi access).
+    const chainFromCid = (cid: string): string | undefined => {
+        const c = (cid || "").split("/")[2];
+        return (c && c !== "*" && !c.includes("+") && !c.includes(",")) ? c : undefined;
+    };
+    const movChain = chainFromCid(mob.cid) || mob.molecule.sequences?.[0]?.chain;
+    const refChain = chainFromCid(ref.cid) || ref.molecule.sequences?.[0]?.chain;
+    if (!movChain || !refChain) { console.warn(`[pymol:${cmd.lineNo}] ${name}: could not determine chains to superpose`); return; }
+    if (name !== "super" && name !== "cealign") {
+        console.warn(`[pymol:${cmd.lineNo}] ${name}: PyKeko performs SSM secondary-structure superposition for super/cealign/align/fit alike (PyMOL's distinct ${name} algorithm is not replicated)`);
+    }
+    try {
+        // Same path as the Superpose UI: the molecule's SSMSuperpose method.
+        await mob.molecule.SSMSuperpose(movChain, ref.molecule.molNo, refChain);
+        const tag = `${mob.molecule.name}/${movChain} → ${ref.molecule.name}/${refChain}`;
+        if (env.enqueueSnackbar) env.dispatch(env.enqueueSnackbar({ message: `Superposed ${tag} (SSM)`, variant: "info" }));
+    } catch (e) {
+        console.warn(`[pymol:${cmd.lineNo}] ${name} failed:`, e);
+    }
+};
+
 // ---------- dispatcher ----------
 
 const handlers: Record<string, (cmd: PymolCommand, env: any, registry: PymolRegistry, scriptApi: ScriptContext) => Promise<void>> = {
@@ -925,6 +1033,12 @@ const handlers: Record<string, (cmd: PymolCommand, env: any, registry: PymolRegi
     dist: cmdDistance,
     png: cmdPng,
     ray: cmdRay,
+    // Labels + superposition
+    label: cmdLabel,
+    super: cmdSuperpose,
+    cealign: cmdSuperpose,
+    align: cmdSuperpose,
+    fit: cmdSuperpose,
     // Soft-warns
     pseudoatom: async (cmd) => { console.warn(`[pymol:${cmd.lineNo}] pseudoatom: not supported (no-op)`); },
 };

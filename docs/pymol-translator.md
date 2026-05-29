@@ -155,8 +155,8 @@ are resolved first; the live Redux molecule list is checked as a fallback.
 
 | Command | Notes |
 |---------|-------|
-| `png [name]` | Hands off to Moorhen's screenshot pipeline (`videoRecorderRef.takeScreenShot`). Triggers a file download. |
-| `ray <w>, <h>` | No software ray-tracing in Moorhen; warns and falls back to `png` (rasterised). |
+| `png [name [, w [, h]]]` | Screenshot at the current resolution (or an explicit `w`×`h`), saved via the desktop app's native Save panel (else a browser download). Pass `ray=1` (5th positional arg) for the high-quality render. |
+| `ray [w [, h]]` | **High-quality export**: supersampled, with ambient occlusion + shadows forced on, capped at the ~4096 px render ceiling. Width-first — height derives from the viewport aspect when omitted (e.g. `ray 2000`), matching PyMOL. Not a true ray-tracer (the WebGL render is supersampled), but publication-grade. |
 
 ### `set` (a curated subset)
 
@@ -182,6 +182,39 @@ are resolved first; the live Redux molecule list is checked as a fallback.
 Truthy parsing for booleans: `0` / `off` / `false` are false; everything else
 is true (so `on`, `1`, `true` all work).
 
+### Labels
+
+| Command | Notes |
+|---------|-------|
+| `label selection, expression` | Adds 3D text labels to every atom in `selection`. |
+
+The expression is a **curated subset** of PyMOL's (full Python evaluation is out of
+scope, like `iterate`/`alter`):
+
+- a quoted literal — `label resi 50 and name CA, "active site"`
+- a bare property token — `resn`, `resi`, `name`, `chain`, `elem`, `b`, `q`
+- a Python-style format — `label name CA, "%s/%s" % (resn, resi)`
+
+Anything else warns once and falls back to `<resn> <resi>`. Choose the granularity
+with the selection, as in PyMOL (e.g. `label name CA and resi 1-50, resi` → one per
+residue). An **empty** expression (e.g. `label all,`) clears all labels.
+
+### Superposition
+
+| Command | Notes |
+|---------|-------|
+| `super mobile, target` | Superpose `mobile` onto `target`; reports in a toast. |
+| `cealign`, `align`, `fit` | Aliases of `super` (see the mapping note). |
+
+**Mapping note:** PyKeko maps **all four** of `super` / `cealign` / `align` / `fit`
+to Coot's **SSM secondary-structure superposition** — the sequence-independent
+auto-matcher that the *Superpose* UI is built on. It does **not** replicate PyMOL's
+four distinct algorithms; `align` (sequence-based) and `fit` (exact-atom) also run
+SSM, with a console note. Each selection resolves to a molecule + chain (an explicit
+chain in the selection wins; otherwise the molecule's first chain). Mobile and target
+must be different molecules. SSM handles dissimilar structures gracefully (it simply
+finds the best secondary-structure match it can).
+
 ### Misc
 
 | Command | Notes |
@@ -192,7 +225,7 @@ is true (so `on`, `1`, `true` all work).
 ### Explicitly NOT supported
 
 `iterate`, `alter`, `cmd.do(...)`, `python`/`endpython` blocks, `extend`,
-`cmd.load_cgo`, `cealign`, `align`, `super`, movie commands (`mset`, `mplay`,
+`cmd.load_cgo`, movie commands (`mset`, `mplay`,
 `frame`), scene `store`/`recall` (Moorhen has its own scene model). The `state`
 selector is also out — Moorhen tracks model indices but doesn't expose multi-
 state semantics cleanly.
