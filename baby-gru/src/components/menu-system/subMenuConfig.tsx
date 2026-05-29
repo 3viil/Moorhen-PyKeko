@@ -205,6 +205,14 @@ export const subMenuMap: SubMenuMap = {
                 content: MenuItems.ExportMenuItem,
                 keywords: ["gltf", "obj", "3mf", "export"],
             },
+            {
+                id: "export-mvs-viewer",
+                label: "Export portable viewer (HTML)…",
+                type: "customJSX",
+                keywords: ["export", "html", "viewer", "molstar", "share", "portable"],
+                description: "Save a self-contained Mol* viewer HTML capturing the current scene",
+                jsx: MenuItems.ExportMvsViewer,
+            },
 
             {
                 id: "load-mrbump",
