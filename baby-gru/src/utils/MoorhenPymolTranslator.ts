@@ -548,6 +548,12 @@ const cmdLoad = async (cmd: PymolCommand, env: any, registry: PymolRegistry, scr
 
 // ---------- Tier 2 handlers ----------
 
+// PyMOL `lines` is visually thinner than `sticks` (1-pixel GL_LINES vs full
+// 3D cylinders ~0.15-0.2 Å radius). Moorhen renders both via the CBs style,
+// so they'd look identical without explicit per-rep bond-width override. Set
+// `lines` to a thin 0.03 Å cylinder so it reads as thin geometry.
+const LINES_BOND_WIDTH = 0.03;
+
 const cmdShow = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const repKey = cmd.args[0]?.trim().toLowerCase();
     const selArg = cmd.args[1];
@@ -560,7 +566,17 @@ const cmdShow = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => 
     const targets = await resolveSelection(selArg, env, registry);
     for (const { molecule, cid } of targets) {
         // Use molecule.show — find-or-create, keeps state consistent, no duplicate reps
-        try { await molecule.show(style, normalizeCidForMoorhen(cid)); }
+        try {
+            const rep = await molecule.show(style, normalizeCidForMoorhen(cid));
+            // Distinguish `lines` from `sticks` (both map to CBs style otherwise).
+            // `sticks` keeps the molecule's defaultBondOptions; `lines` gets a thin
+            // per-rep override so the rendering is visually distinct.
+            if (rep && repKey === "lines") {
+                const base = (molecule as any).defaultBondOptions || {};
+                (rep as any).setBondOptions?.({ ...base, width: LINES_BOND_WIDTH });
+                try { await (rep as any).redraw?.(); } catch { /* renderer may not be ready */ }
+            }
+        }
         catch (e) { console.warn(`[pymol:${cmd.lineNo}] show ${repKey} on ${molecule.name}:`, e); }
     }
 };
@@ -576,8 +592,27 @@ const cmdHide = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => 
     const targets = await resolveSelection(selArg, env, registry);
     for (const { molecule, cid } of targets) {
         if (!repKey || repKey === "everything") {
-            for (const r of [...(molecule.representations as moorhen.MoleculeRepresentation[])]) {
-                try { molecule.hide(r.style, r.cid); } catch (e) { /* skip stale */ }
+            if (noSelector) {
+                // `hide everything` — wipe every rep on this molecule.
+                for (const r of [...(molecule.representations as moorhen.MoleculeRepresentation[])]) {
+                    try { molecule.hide(r.style, r.cid); } catch (e) { /* skip stale */ }
+                }
+            } else {
+                // `hide everything, sel` — hide every rep TYPE specifically at
+                // this selection. Iterate every known style and ask Moorhen to
+                // hide it at the resolved cid. Since molecule.hide() is exact-cid,
+                // this only removes reps that were created with this exact cid
+                // (e.g. `show spheres, resn hoh` → matching `hide everything, resn hoh`).
+                // It does NOT punch holes in broader reps like a global `show cartoon, all`
+                // — those need an explicit `hide cartoon, sel` with the same cid scheme,
+                // or a recreate-with-narrower-cid pattern that PyKeko doesn't yet support.
+                const seenStyles = new Set<string>();
+                for (const styleVal of Object.values(REP_MAP)) {
+                    if (seenStyles.has(styleVal)) continue;   // REP_MAP has aliases
+                    seenStyles.add(styleVal);
+                    try { molecule.hide(styleVal as moorhen.RepresentationStyles, normalizeCidForMoorhen(cid)); }
+                    catch (e) { /* skip stale */ }
+                }
             }
         } else {
             const style = REP_MAP[repKey];

@@ -10,27 +10,30 @@ import { buildMvsJson, MvsMapInput } from "../../utils/MvsExportBuilder";
 import { cropCcp4 } from "../../utils/MvsCcp4Crop";
 import { captureCamera } from "../../utils/MvsCameraCapture";
 
+// Half-side (Å) of the density cube embedded in the portable viewer. Matches
+// Moorhen's default on-screen map radius, so what the recipient sees in the
+// standalone viewer is close to what was on screen at export time. Smaller =
+// faster viewer + smaller file; larger = density visible over a wider region
+// but the standalone viewer's isosurface mesh grows fast (a cubic relationship
+// with radius).
+const DENSITY_CUBE_HALF_SIDE_ANGSTROMS = 20;
+
 const rgbToHex = (rgb: { r: number; g: number; b: number } | null | undefined): string | undefined => {
     if (!rgb) return undefined;
     const to255 = (v: number) => Math.max(0, Math.min(255, Math.round(v * 255)));
     return "#" + [rgb.r, rgb.g, rgb.b].map(v => to255(v).toString(16).padStart(2, "0")).join("");
 };
 
-// Union XYZ bounding box across all molecules. Drives the map crop region.
-async function computeUnionBounds(mols: moorhen.Molecule[]): Promise<{ min: [number, number, number]; max: [number, number, number] } | null> {
-    let min: [number, number, number] = [Infinity, Infinity, Infinity];
-    let max: [number, number, number] = [-Infinity, -Infinity, -Infinity];
-    let saw = false;
+// Union XYZ centroid across all molecules — used as a fallback crop centre
+// when no camera state is available (rare; only on the very first frame
+// before the user has moved the view).
+async function computeUnionCentroid(mols: moorhen.Molecule[]): Promise<[number, number, number] | null> {
+    let sx = 0, sy = 0, sz = 0, n = 0;
     for (const m of mols) {
         const atoms = await m.gemmiAtomsForCid("/*/*/*/*");
-        for (const a of atoms) {
-            saw = true;
-            if (a.x < min[0]) min[0] = a.x; if (a.x > max[0]) max[0] = a.x;
-            if (a.y < min[1]) min[1] = a.y; if (a.y > max[1]) max[1] = a.y;
-            if (a.z < min[2]) min[2] = a.z; if (a.z > max[2]) max[2] = a.z;
-        }
+        for (const a of atoms) { sx += a.x; sy += a.y; sz += a.z; n++; }
     }
-    return saw ? { min, max } : null;
+    return n > 0 ? [sx / n, sy / n, sz / n] : null;
 }
 
 export const ExportMvsViewer = () => {
@@ -61,15 +64,23 @@ export const ExportMvsViewer = () => {
             })));
 
             // --- Maps (visible only) ---
-            const bounds = await computeUnionBounds(molecules);
+            // Crop each map to a cube around the camera target (matches Moorhen's
+            // on-screen "sphere of density around the cursor" behaviour). Falls
+            // back to the molecule centroid if no camera is available. Cropping
+            // to a small cube (~20 Å half-side) keeps the embedded file small
+            // AND the standalone viewer responsive — the isosurface mesh for a
+            // whole-ASU's worth of density costs the viewer dearly.
+            const cam = captureCamera();
+            const cropCenter: [number, number, number] | null = cam?.target
+                ?? (await computeUnionCentroid(molecules));
             const mapInputs: MvsMapInput[] = [];
             const skipped: string[] = [];
             const visible = new Set(visibleMaps || []);
             const candidateMaps = (maps || []).filter(m => visible.has(m.molNo));
 
-            if (candidateMaps.length > 0 && !bounds) {
+            if (candidateMaps.length > 0 && !cropCenter) {
                 // Shouldn't happen given the molecule-loaded check above, but be defensive.
-                throw new Error("Cannot determine model bounding box for map cropping");
+                throw new Error("Cannot determine crop center (no camera + no molecules)");
             }
 
             for (const m of candidateMaps) {
@@ -79,9 +90,8 @@ export const ExportMvsViewer = () => {
                     if (!mapBuf) { skipped.push(`${m.name} (no data)`); continue; }
 
                     const cropped = cropCcp4(mapBuf, {
-                        boxMin: bounds!.min,
-                        boxMax: bounds!.max,
-                        paddingAngstroms: 8,
+                        centerXYZ: cropCenter!,
+                        radiusAngstroms: DENSITY_CUBE_HALF_SIDE_ANGSTROMS,
                     });
 
                     const params = m.getMapContourParams();
@@ -114,7 +124,7 @@ export const ExportMvsViewer = () => {
             const mvsJson = buildMvsJson({
                 molecules: mols,
                 maps: mapInputs,
-                camera: captureCamera(),
+                camera: cam,
                 title: `PyKeko — ${mols.map(m => m.name).join(", ")}`,
             });
             const suggestedName = (mols[0]?.name || "pykeko") + "_viewer.html";

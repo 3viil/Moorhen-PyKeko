@@ -96,12 +96,25 @@ function patchHeader(buf: ArrayBuffer, hdr: Ccp4Header) {
 }
 
 export interface CropOptions {
-    /** Min corner of the bounding box, in orthogonal Å. */
-    boxMin: [number, number, number];
-    /** Max corner of the bounding box, in orthogonal Å. */
-    boxMax: [number, number, number];
-    /** Extra padding to add to each side of the box (Å). Default 8 — generous
-     *  enough that a 1.5σ surface lobe doesn't get clipped at the edge. */
+    /** EITHER bbox mode (legacy): min/max corners + padding. Crops to cover the
+     *  entire targeted region — useful when you want density visible across the
+     *  whole model.
+     *
+     *  OR center mode (recommended for portable viewer): centerXYZ + radiusAngstroms.
+     *  Crops to a cube of side 2·radius around the centre point — gives a focused
+     *  binding-pocket density blob that doesn't bog down Mol* with a whole-ASU
+     *  worth of isosurface to mesh. Matches how Moorhen displays density on-screen
+     *  (a sphere around the cursor).
+     *
+     *  Exactly one of (boxMin+boxMax) or centerXYZ should be set. */
+    boxMin?: [number, number, number];
+    boxMax?: [number, number, number];
+    centerXYZ?: [number, number, number];
+    /** Half-side of the centered crop cube (Å). Center mode only. Default 20 —
+     *  matches Moorhen's default map-radius for on-screen contouring. */
+    radiusAngstroms?: number;
+    /** Extra padding to add to each side of the box (Å). Bbox mode only.
+     *  Default 8 — generous enough that a 1.5σ surface lobe doesn't get clipped. */
     paddingAngstroms?: number;
     /** Output file size budget per map (bytes). If the cropped grid would
      *  exceed this, the algorithm picks the smallest power-of-2 stride that
@@ -171,11 +184,28 @@ export function cropCcp4(buf: ArrayBuffer, opts: CropOptions): CroppedMap {
         Mi22 * z,
     ];
 
+    // --- Resolve to a final orthogonal bbox from either input mode ---
+    let bboxMin: [number, number, number];
+    let bboxMax: [number, number, number];
+    if (opts.centerXYZ !== undefined) {
+        // Center mode: cube of side 2·radius around the centre.
+        const r = opts.radiusAngstroms ?? 20;
+        const c = opts.centerXYZ;
+        bboxMin = [c[0] - r, c[1] - r, c[2] - r];
+        bboxMax = [c[0] + r, c[1] + r, c[2] + r];
+    } else if (opts.boxMin !== undefined && opts.boxMax !== undefined) {
+        // Bbox mode: model-extent box + symmetric padding.
+        bboxMin = [opts.boxMin[0] - pad, opts.boxMin[1] - pad, opts.boxMin[2] - pad];
+        bboxMax = [opts.boxMax[0] + pad, opts.boxMax[1] + pad, opts.boxMax[2] + pad];
+    } else {
+        throw new Error("MvsCcp4Crop: either (boxMin+boxMax) or centerXYZ must be supplied");
+    }
+
     // --- Convert bbox (Å) → fractional, considering all 8 corners so a
     // skewed cell doesn't accidentally cut off voxels we need. ---
-    const xs = [opts.boxMin[0] - pad, opts.boxMax[0] + pad];
-    const ys = [opts.boxMin[1] - pad, opts.boxMax[1] + pad];
-    const zs = [opts.boxMin[2] - pad, opts.boxMax[2] + pad];
+    const xs = [bboxMin[0], bboxMax[0]];
+    const ys = [bboxMin[1], bboxMax[1]];
+    const zs = [bboxMin[2], bboxMax[2]];
     const fmin: [number, number, number] = [Infinity, Infinity, Infinity];
     const fmax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
     for (const x of xs) for (const y of ys) for (const z of zs) {
