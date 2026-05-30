@@ -688,7 +688,21 @@ const cmdColor = async (cmd: PymolCommand, env: any, registry: PymolRegistry) =>
     const targets = await resolveSelection(selArg, env, registry);
     const touched = new Set<MoorhenMolecule>();
     for (const { molecule, cid } of targets) {
+        // Add to the molecule-level default rules. Used by reps whose
+        // useDefaultColourRules is still true (UI-created reps, freshly added
+        // reps that haven't been individually coloured yet).
         molecule.addColourRule("cid", cid, hex, [cid, hex]);
+        // INVERSE fix complementing cmdShow's forward inheritance: push the
+        // same rule onto every existing rep's own colourRules. PyMOL's atoms
+        // have one shared colour across reps; Moorhen's colour state is
+        // per-rep. Without this, a rep that's already flipped
+        // useDefaultColourRules=false (via prior addColourRule or
+        // inheritance) wouldn't update on a fresh `color ...` call.
+        // Each rule's own cid governs which atoms it tints, so adding a rule
+        // for `chain A` to a `chain B`-only rep is a visual no-op — safe.
+        for (const rep of ((molecule.representations as moorhen.MoleculeRepresentation[]) || [])) {
+            try { (rep as any).addColourRule?.("cid", cid, hex, [cid, hex]); } catch { /* skip */ }
+        }
         touched.add(molecule);
     }
     for (const molecule of touched) {
