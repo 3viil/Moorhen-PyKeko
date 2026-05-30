@@ -63,4 +63,5 @@ export { InstallCliLauncher } from "./InstallCliLauncher";
 export { ManageSession } from "./ManageSession";
 export { ExportGltf } from "./ExportGltf";
 export { ExportMvsViewer } from "./ExportMvsViewer";
+export { ExportPmlBundle } from "./ExportPmlBundle";
 export { ExportMenuItem } from "./Export";

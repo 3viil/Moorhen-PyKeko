@@ -213,6 +213,14 @@ export const subMenuMap: SubMenuMap = {
                 description: "Save a self-contained Mol* viewer HTML capturing the current scene",
                 jsx: MenuItems.ExportMvsViewer,
             },
+            {
+                id: "export-pml-bundle",
+                label: "Save as PyMOL bundle (.pml)…",
+                type: "customJSX",
+                keywords: ["save", "pml", "pse", "pymol", "bundle", "export"],
+                description: "Save a PyMOL script + sibling .pdb / .ccp4 files for round-trip to PyMOL.app",
+                jsx: MenuItems.ExportPmlBundle,
+            },
 
             {
                 id: "load-mrbump",
