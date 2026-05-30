@@ -567,7 +567,40 @@ const cmdShow = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => 
     for (const { molecule, cid } of targets) {
         // Use molecule.show — find-or-create, keeps state consistent, no duplicate reps
         try {
+            const existingRepIds = new Set((molecule.representations as any[]).map(r => r.uniqueId));
             const rep = await molecule.show(style, normalizeCidForMoorhen(cid));
+            const isFreshlyCreated = rep && !existingRepIds.has((rep as any).uniqueId);
+
+            // PyMOL convention: `show <rep>` adopts whatever colours are already
+            // on those atoms (each PyMOL atom has a single colour shared across
+            // reps). Moorhen's model is per-rep colourRules — a fresh rep starts
+            // empty and falls back to Moorhen defaults (element-based etc.),
+            // visibly ignoring any prior `color ..., <sel>` the user applied.
+            // To get the PyMOL behaviour, inherit colour rules from every other
+            // rep on the molecule. Each rule's cid governs which atoms it
+            // applies to, so copying rules with non-overlapping cids is safe.
+            if (isFreshlyCreated && rep) {
+                const others = (molecule.representations as moorhen.MoleculeRepresentation[]).filter(r => r !== rep && r.colourRules && !((r as any).useDefaultColourRules) && r.colourRules.length > 0);
+                let inherited = 0;
+                for (const r of others) {
+                    for (const rule of r.colourRules) {
+                        (rep as any).addColourRule?.(
+                            (rule as any).ruleType,
+                            (rule as any).cid,
+                            (rule as any).color,
+                            (rule as any).args,
+                            (rule as any).isMultiColourRule,
+                            (rule as any).applyColourToNonCarbonAtoms,
+                            (rule as any).label,
+                        );
+                        inherited++;
+                    }
+                }
+                if (inherited > 0) {
+                    try { await (rep as any).redraw?.(); } catch { /* renderer may not be ready */ }
+                }
+            }
+
             // Distinguish `lines` from `sticks` (both map to CBs style otherwise).
             // `sticks` keeps the molecule's defaultBondOptions; `lines` gets a thin
             // per-rep override so the rendering is visually distinct.
