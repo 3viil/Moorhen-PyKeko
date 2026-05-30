@@ -10,6 +10,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { RootState, enqueueSnackbar } from "@/store";
 import { moorhen } from "../../types/moorhen";
 import { buildPmlBundle } from "../../utils/MoorhenPymolSaveBundle";
+import { MoorhenMenuItem } from "../interface-base/MenuItems/MenuItem";
 
 const isLiveMol = (m: any): boolean => {
     // Same liveness check the translator uses — skip molecules whose backing
@@ -90,8 +91,8 @@ export const ExportPmlBundle = () => {
     if (typeof window === "undefined" || !(window as any).__moorhenControl?.saveBundle) return null;
 
     return (
-        <span className="moorhen__input__label-menu" style={{ cursor: "pointer" }} onClick={handleClick}>
+        <MoorhenMenuItem onClick={handleClick}>
             Save as PyMOL bundle (.pml)…
-        </span>
+        </MoorhenMenuItem>
     );
 };

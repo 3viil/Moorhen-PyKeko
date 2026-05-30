@@ -9,6 +9,7 @@ import { moorhen } from "../../types/moorhen";
 import { buildMvsJson, MvsMapInput } from "../../utils/MvsExportBuilder";
 import { cropCcp4 } from "../../utils/MvsCcp4Crop";
 import { captureCamera } from "../../utils/MvsCameraCapture";
+import { MoorhenMenuItem } from "../interface-base/MenuItems/MenuItem";
 
 // Half-side (Å) of the density cube embedded in the portable viewer. Matches
 // Moorhen's default on-screen map radius, so what the recipient sees in the
@@ -151,8 +152,8 @@ export const ExportMvsViewer = () => {
     if (typeof window === "undefined" || !(window as any).__moorhenControl?.exportMvsViewer) return null;
 
     return (
-        <span className="moorhen__input__label-menu" style={{ cursor: "pointer" }} onClick={handleClick}>
+        <MoorhenMenuItem onClick={handleClick}>
             Export portable viewer (HTML)…
-        </span>
+        </MoorhenMenuItem>
     );
 };
