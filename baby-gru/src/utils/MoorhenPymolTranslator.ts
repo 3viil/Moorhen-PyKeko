@@ -17,6 +17,7 @@ import { MoorhenMolecule } from "./MoorhenMolecule";
 import { parsePymolScript, PymolCommand } from "./MoorhenPymolParser";
 import { parseSelection, SelNode } from "./MoorhenPymolSelectionParser";
 import { evaluateSelectionForMolecule, coalesceResidueCids } from "./MoorhenPymolFilter";
+import { buildPmlBundle } from "./MoorhenPymolSaveBundle";
 import { moorhen } from "../types/moorhen";
 
 type ScriptContext = {
@@ -642,17 +643,68 @@ const cmdSet = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const num = (v: string | undefined) => { const n = parseFloat(v ?? ""); return isNaN(n) ? null : n; };
 
     switch (key) {
-        case "transparency": {
+        case "transparency":
+        case "surface_transparency":
+        case "cartoon_transparency": {
             const opacity = 1 - parseFloat(value ?? "");
             if (isNaN(opacity)) {
-                console.warn(`[pymol:${cmd.lineNo}] set transparency: invalid value "${value}"`);
+                console.warn(`[pymol:${cmd.lineNo}] set ${key}: invalid value "${value}"`);
                 return;
             }
+            // Filter which rep styles this applies to. PyMOL's plain `transparency`
+            // targets the surface; the typed variants target only their flavour.
+            // (We keep `transparency` mapped to all-rep alpha for back-compat with
+            // the prior behaviour — it was a no-op-on-style filter before.)
+            const repFilter = key === "surface_transparency" ? new Set(["MolecularSurface"])
+                            : key === "cartoon_transparency" ? new Set(["CRs"])
+                            : null;
             const targets = await resolveSelection(selArg, env, registry);
             for (const { molecule } of targets) {
                 for (const rep of (molecule.representations as moorhen.MoleculeRepresentation[])) {
-                    if (rep.isCustom) rep.setNonCustomOpacity?.(opacity);
+                    if (!rep.isCustom) continue;
+                    if (repFilter && !repFilter.has((rep as any).style)) continue;
+                    rep.setNonCustomOpacity?.(opacity);
                 }
+            }
+            return;
+        }
+        case "stick_radius": {
+            // PyMOL: `set stick_radius, 0.25, sel`. Maps to molecule's bond width.
+            const w = num(value);
+            if (w === null) {
+                console.warn(`[pymol:${cmd.lineNo}] set stick_radius: invalid value "${value}"`);
+                return;
+            }
+            const targets = await resolveSelection(selArg, env, registry);
+            const touched = new Set<MoorhenMolecule>();
+            for (const { molecule } of targets) {
+                (molecule as any).defaultBondOptions = {
+                    ...(molecule as any).defaultBondOptions,
+                    width: w,
+                };
+                touched.add(molecule);
+            }
+            for (const m of touched) {
+                try { await (m as any).redraw(); } catch (e) {
+                    console.warn(`[pymol:${cmd.lineNo}] stick_radius redraw on ${m.name}:`, e);
+                }
+            }
+            return;
+        }
+        case "cartoon_smoothness": {
+            // Scene-level — affects how the cartoon-spline densifies vertices.
+            const v = num(value);
+            if (v === null) {
+                console.warn(`[pymol:${cmd.lineNo}] set cartoon_smoothness: invalid value "${value}"`);
+                return;
+            }
+            env.dispatch(env.setDefaultBondSmoothness(v));
+            // Smoothness change needs a redraw of any cartoon reps to take effect.
+            const targets = await resolveSelection(selArg, env, registry);
+            const touched = new Set<MoorhenMolecule>();
+            for (const { molecule } of targets) touched.add(molecule);
+            for (const m of touched) {
+                try { await (m as any).redraw(); } catch {}
             }
             return;
         }
@@ -735,8 +787,39 @@ const cmdSet = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
         case "surface_solvent":
             console.warn(`[pymol:${cmd.lineNo}] set ${key}: deferred (surface rendering tuning not yet wired)`);
             return;
+        // Specifically-named "we know about this, it's not supported yet":
+        case "sphere_scale":
+            console.warn(`[pymol:${cmd.lineNo}] set sphere_scale: not yet supported — Moorhen has no per-molecule sphere scale knob exposed. Workaround: there isn't a clean one; spheres render at the VdW default.`);
+            return;
+        case "cartoon_fancy_helices":
+            console.warn(`[pymol:${cmd.lineNo}] set cartoon_fancy_helices: not yet supported — Moorhen's cartoon style doesn't expose this toggle.`);
+            return;
+        case "cartoon_loop_radius":
+        case "cartoon_oval_length":
+        case "cartoon_rect_length":
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: not yet supported — Moorhen's cartoon geometry isn't user-tunable here.`);
+            return;
+        case "dot_solvent":
+        case "dot_density":
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: not yet supported — Moorhen's surface algorithm flags aren't exposed.`);
+            return;
+        case "valence":
+            console.warn(`[pymol:${cmd.lineNo}] set valence: not yet supported — Moorhen doesn't draw bond orders.`);
+            return;
+        case "stick_quality":
+            console.warn(`[pymol:${cmd.lineNo}] set stick_quality: not yet supported — Moorhen's stick mesh quality is fixed.`);
+            return;
+        case "internal_gui_width":
+        case "internal_gui_height":
+        case "internal_feedback":
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: ignored — Moorhen's UI layout is React-managed and not script-controlled.`);
+            return;
+        case "ray_trace_color":
+        case "antialias":
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: not yet supported — see the Screenshot dialog for HQ image options.`);
+            return;
         default:
-            console.warn(`[pymol:${cmd.lineNo}] set ${key}: unsupported (silently ignored)`);
+            console.warn(`[pymol:${cmd.lineNo}] set ${key}: unsupported (silently ignored — add to MoorhenPymolTranslator.cmdSet if you want a specific message)`);
     }
 };
 
@@ -1004,6 +1087,144 @@ const cmdSuperpose = async (cmd: PymolCommand, env: any, registry: PymolRegistry
     }
 };
 
+// ---------- save (PDB/mmCIF/PML-bundle) ----------
+
+const cmdSave = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
+    // `save <filename>[, <selection>]`
+    //   .pdb / .ent          → single-file PDB of the targeted molecule(s)
+    //   .cif / .mmcif        → single-file mmCIF
+    //   .pml                 → bundle: scene.pml + sibling .pdb / .ccp4 files,
+    //                          for round-tripping to PyMOL.app
+    //   .pse                 → unsupported; we point at the .pml workflow
+    //   others               → warn
+    //
+    // Limitation today: .pdb / .cif save the WHOLE molecule of the targeted
+    // selection, not a residue-filtered subset, because Moorhen's getAtoms
+    // doesn't take a CID filter and we don't have a Coot-side
+    // copy_fragment_using_cid yet (Phase 2 work). We warn if the selection
+    // would have narrowed the output.
+    const rawFilename = cmd.args[0]?.trim();
+    if (!rawFilename) {
+        console.warn(`[pymol:${cmd.lineNo}] save: missing filename`);
+        return;
+    }
+    const filename = rawFilename.replace(/^['"]|['"]$/g, "");
+    const selArg = cmd.args[1];
+    const ext = (filename.match(/\.([^.]+)$/)?.[1] ?? "").toLowerCase();
+
+    const ctrl = (window as any).__moorhenControl;
+    if (!ctrl?.saveBundle) {
+        console.warn(`[pymol:${cmd.lineNo}] save: only available in the PyKeko desktop app (the browser build can't write files)`);
+        return;
+    }
+
+    // Helper: encode a UTF-8 string as base64 (chunked; btoa explodes on huge strings).
+    const textToB64 = (text: string): string => {
+        const bytes = new TextEncoder().encode(text);
+        let bin = "";
+        const CHUNK = 0x8000;
+        for (let i = 0; i < bytes.length; i += CHUNK) {
+            bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + CHUNK)));
+        }
+        return btoa(bin);
+    };
+
+    const saveSingleCoords = async (format: "pdb" | "mmcif") => {
+        const targets = await resolveSelection(selArg, env, registry);
+        if (targets.length === 0) {
+            console.warn(`[pymol:${cmd.lineNo}] save ${filename}: no molecules matched`);
+            return;
+        }
+        // Warn if the user asked for a sub-selection — we'll save the whole molecule(s).
+        const narrowed = targets.some(t => t.cid && t.cid !== "/*/*/*/*" && t.cid !== "/*/*/*/*:*" && t.cid !== "//*");
+        if (narrowed) {
+            console.warn(`[pymol:${cmd.lineNo}] save ${filename}: selection narrowing not yet supported — saving the whole targeted molecule(s). Phase 2 (copy_fragment_using_cid) will fix this.`);
+        }
+        const chunks: string[] = [];
+        for (const { molecule } of targets) {
+            try { chunks.push(await (molecule as any).getAtoms(format)); }
+            catch (e: any) { console.warn(`[pymol:${cmd.lineNo}] save: getAtoms(${format}) failed for ${molecule.name}: ${e?.message ?? e}`); }
+        }
+        if (chunks.length === 0) return;
+        const text = chunks.join("\n");
+        await ctrl.saveBundle(filename, [{ name: filename, dataBase64: textToB64(text) }]);
+    };
+
+    switch (ext) {
+        case "pdb":
+        case "ent":
+            return saveSingleCoords("pdb");
+        case "cif":
+        case "mmcif":
+            return saveSingleCoords("mmcif");
+        case "pml": {
+            // Bundle: the script + sibling .pdb / .ccp4 files. We need the
+            // chosen output directory to bake absolute load paths into the
+            // script; resolve it from the user's pick post-save via a
+            // two-phase pattern: build with a placeholder, then rewrite.
+            // Simpler: ask the wrapper to tell us where it's about to save by
+            // using lastSaveDir (the wrapper remembers it across calls). We
+            // approximate by building the bundle assuming the script and
+            // siblings sit in the SAME directory and using relative loads —
+            // which works as long as the user `cd`'s into that dir before
+            // running, OR PyMOL is launched with the .pml as its argument
+            // (which makes the .pml's dir the CWD).
+            const mols = Object.values((env as any).molecules || {}) as MoorhenMolecule[];
+            const maps = Object.values((env as any).maps || {}) as any[];
+            const liveMols = mols.filter(isLiveMolecule);
+            if (liveMols.length === 0) {
+                console.warn(`[pymol:${cmd.lineNo}] save ${filename}: no molecules loaded`);
+                return;
+            }
+            const bgRgba = (env.store?.getState?.()?.sceneSettings?.backgroundColor as [number, number, number, number] | undefined) ?? null;
+            // We pass an EMPTY bundleDir; the script uses bare basenames for `load`,
+            // which PyMOL resolves relative to CWD. PyMOL's UI invocation typically
+            // chdir's to the script's directory when the user double-clicks or does
+            // `pymol scene.pml`. If users hit the `pwd` issue we can add a `cd` line
+            // up front in a future iteration once the IPC tells us the chosen dir.
+            const bundle = await buildPmlBundle({
+                pmlBasename: filename,
+                bundleDir: ".",   // relative loads — PyMOL resolves vs CWD
+                molecules: liveMols,
+                maps,
+                backgroundColor: bgRgba,
+            });
+            const r = await ctrl.saveBundle(filename, bundle.files);
+            if (r?.ok && env.enqueueSnackbar) {
+                const nFiles = bundle.files.length;
+                env.dispatch(env.enqueueSnackbar({
+                    message: `Saved PyMOL bundle: ${nFiles} file${nFiles === 1 ? "" : "s"} at ${r.primary}`,
+                    variant: "success",
+                }));
+            } else if (!r?.canceled && env.enqueueSnackbar) {
+                env.dispatch(env.enqueueSnackbar({
+                    message: `Save failed: ${r?.error ?? "unknown error"}`,
+                    variant: "error",
+                }));
+            }
+            return;
+        }
+        case "pse":
+            console.warn(
+                `[pymol:${cmd.lineNo}] save .pse: PyMOL's binary session format is undocumented and would require shipping PyMOL itself. ` +
+                `Use \`save ${filename.replace(/\.pse$/i, ".pml")}\` instead — that emits a PML bundle you can open in PyMOL.app and \`save .pse\` from there.`
+            );
+            return;
+        case "sdf":
+        case "mol":
+        case "mol2":
+        case "xyz":
+        case "wrl":
+        case "obj":
+        case "gltf":
+        case "glb":
+            console.warn(`[pymol:${cmd.lineNo}] save .${ext}: not supported. Supported extensions: .pdb .cif .pml`);
+            return;
+        default:
+            console.warn(`[pymol:${cmd.lineNo}] save: unknown extension on "${filename}" (supported: .pdb .cif .pml)`);
+    }
+};
+
 // ---------- dispatcher ----------
 
 const handlers: Record<string, (cmd: PymolCommand, env: any, registry: PymolRegistry, scriptApi: ScriptContext) => Promise<void>> = {
@@ -1042,6 +1263,8 @@ const handlers: Record<string, (cmd: PymolCommand, env: any, registry: PymolRegi
     cealign: cmdSuperpose,
     align: cmdSuperpose,
     fit: cmdSuperpose,
+    // Save (PDB / mmCIF / PML-bundle for PyMOL round-trip)
+    save: cmdSave,
     // Soft-warns
     pseudoatom: async (cmd) => { console.warn(`[pymol:${cmd.lineNo}] pseudoatom: not supported (no-op)`); },
 };
