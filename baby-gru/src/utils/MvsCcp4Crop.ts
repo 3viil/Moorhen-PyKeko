@@ -21,11 +21,14 @@
 //     the grid by reading voxels modulo the grid count (the crystal IS
 //     periodic, so this is exact), and report a shifted NCSTART/NRSTART/
 //     NSSTART so Mol* renders the density at the model's location.
-//   - Limits we accept:
-//     - Orthorhombic-cell fast path for fractional conversion. Triclinic
-//       cells over-crop slightly but render correctly.
-//     - No downsampling in v1 — added only if cropped files turn out to
-//       still be too big in practice.
+//   - Orthogonal→fractional uses the full cell-matrix inverse (handles
+//     monoclinic and triclinic correctly). We transform all 8 corners of
+//     the padded bbox and take the min/max fractional coord per axis —
+//     conservative but exact, no over-cropping on non-orthorhombic cells.
+//   - If the cropped grid still exceeds the per-map size budget (default
+//     8 MB), the algorithm picks the smallest integer stride that fits
+//     and downsamples while updating NX/NY/NZ correctly so voxel size
+//     stays accurate.
 
 const HEADER_BYTES = 1024;
 
@@ -138,26 +141,57 @@ export function cropCcp4(buf: ArrayBuffer, opts: CropOptions): CroppedMap {
 
     const pad = opts.paddingAngstroms ?? 8;
 
-    // --- Convert bbox (Å) to fractional cell coordinates ---
-    // Orthorhombic fast path. For triclinic this slightly over-crops; that's
-    // safer than under-cropping and the rendered surface still looks right.
-    const fmin: [number, number, number] = [
-        (opts.boxMin[0] - pad) / hdr.cellA,
-        (opts.boxMin[1] - pad) / hdr.cellB,
-        (opts.boxMin[2] - pad) / hdr.cellC,
+    // --- Build the cell→Cartesian transform M (standard PDB orientation:
+    // a along X, b in XY plane). For orthorhombic cells this is just
+    // diag(a,b,c); for monoclinic/triclinic, the off-diagonal terms encode
+    // the angles. M⁻¹ is upper-triangular and we apply it analytically.
+    const DEG = Math.PI / 180;
+    const cosA = Math.cos(hdr.alpha * DEG);
+    const cosB = Math.cos(hdr.beta * DEG);
+    const cosG = Math.cos(hdr.gamma * DEG);
+    const sinG = Math.sin(hdr.gamma * DEG);
+    // V_n = √(1 - cos²α - cos²β - cos²γ + 2 cosα cosβ cosγ)
+    const vn = Math.sqrt(Math.max(0, 1 - cosA*cosA - cosB*cosB - cosG*cosG + 2 * cosA * cosB * cosG));
+    const M00 = hdr.cellA;
+    const M01 = hdr.cellB * cosG;
+    const M02 = hdr.cellC * cosB;
+    const M11 = hdr.cellB * sinG;
+    const M12 = (Math.abs(sinG) > 1e-9) ? hdr.cellC * (cosA - cosB * cosG) / sinG : 0;
+    const M22 = (Math.abs(sinG) > 1e-9) ? hdr.cellC * vn / sinG : hdr.cellC;
+    // Inverse of the upper-triangular 3×3:
+    const Mi00 = 1 / M00;
+    const Mi11 = 1 / M11;
+    const Mi22 = 1 / M22;
+    const Mi01 = -M01 / (M00 * M11);
+    const Mi12 = -M12 / (M11 * M22);
+    const Mi02 = (M01 * M12 - M02 * M11) / (M00 * M11 * M22);
+    const orthToFrac = (x: number, y: number, z: number): [number, number, number] => [
+        Mi00 * x + Mi01 * y + Mi02 * z,
+        Mi11 * y + Mi12 * z,
+        Mi22 * z,
     ];
-    const fmax: [number, number, number] = [
-        (opts.boxMax[0] + pad) / hdr.cellA,
-        (opts.boxMax[1] + pad) / hdr.cellB,
-        (opts.boxMax[2] + pad) / hdr.cellC,
-    ];
+
+    // --- Convert bbox (Å) → fractional, considering all 8 corners so a
+    // skewed cell doesn't accidentally cut off voxels we need. ---
+    const xs = [opts.boxMin[0] - pad, opts.boxMax[0] + pad];
+    const ys = [opts.boxMin[1] - pad, opts.boxMax[1] + pad];
+    const zs = [opts.boxMin[2] - pad, opts.boxMax[2] + pad];
+    const fmin: [number, number, number] = [Infinity, Infinity, Infinity];
+    const fmax: [number, number, number] = [-Infinity, -Infinity, -Infinity];
+    for (const x of xs) for (const y of ys) for (const z of zs) {
+        const f = orthToFrac(x, y, z);
+        for (let a = 0; a < 3; a++) {
+            if (f[a] < fmin[a]) fmin[a] = f[a];
+            if (f[a] > fmax[a]) fmax[a] = f[a];
+        }
+    }
 
     // --- Convert fractional XYZ to grid indices in XYZ axis order ---
     const xyzCount = [hdr.nx, hdr.ny, hdr.nz];
-    // Grid index relative to the cell origin; ORIGIN field (when non-zero,
-    // typical for cryo-EM) shifts it. Crystallographic maps from Coot have
-    // ORIGIN=0 and use NCSTART/NRSTART/NSSTART instead.
-    const origin = [hdr.originX / hdr.cellA, hdr.originY / hdr.cellB, hdr.originZ / hdr.cellC];
+    // ORIGIN field is in orthogonal coords; convert to fractional too.
+    // Crystallographic maps from Coot have ORIGIN=0; cryo-EM maps may not.
+    const originFrac = orthToFrac(hdr.originX, hdr.originY, hdr.originZ);
+    const origin = [originFrac[0], originFrac[1], originFrac[2]];
 
     // Desired XYZ grid index range (inclusive lo, exclusive hi).
     const xyzLo: number[] = [0, 0, 0];

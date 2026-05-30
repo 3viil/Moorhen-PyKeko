@@ -41,9 +41,16 @@ export interface MvsMapInput {
     negativeColor?: string;
 }
 
+export interface MvsCameraInput {
+    target: [number, number, number];
+    position: [number, number, number];
+    up?: [number, number, number];
+}
+
 export interface MvsExportOptions {
     molecules: MvsMoleculeInput[];
     maps?: MvsMapInput[];
+    camera?: MvsCameraInput | null;
     title?: string;
     backgroundColor?: string;
 }
@@ -169,6 +176,16 @@ export function buildMvsJson(opts: MvsExportOptions): string {
         ...opts.molecules.map(m => structureBranch(m.coords, m.chains)),
         ...(opts.maps || []).map(volumeBranch),
     ];
+    if (opts.camera) {
+        // Camera is a root-level node, not nested inside the data branches.
+        // Placed last so the doc's structure-first/maps-second/camera-last
+        // reading order matches how Mol* sets things up.
+        children.push(node("camera", {
+            target: opts.camera.target,
+            position: opts.camera.position,
+            ...(opts.camera.up ? { up: opts.camera.up } : {}),
+        }));
+    }
     const doc = {
         metadata: {
             title: opts.title || "PyKeko export",

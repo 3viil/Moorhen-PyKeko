@@ -8,6 +8,7 @@ import { RootState, enqueueSnackbar } from "@/store";
 import { moorhen } from "../../types/moorhen";
 import { buildMvsJson, MvsMapInput } from "../../utils/MvsExportBuilder";
 import { cropCcp4 } from "../../utils/MvsCcp4Crop";
+import { captureCamera } from "../../utils/MvsCameraCapture";
 
 const rgbToHex = (rgb: { r: number; g: number; b: number } | null | undefined): string | undefined => {
     if (!rgb) return undefined;
@@ -87,10 +88,14 @@ export const ExportMvsViewer = () => {
                     // contourLevel is in ABSOLUTE density units (Moorhen's
                     // slider exposes σ but stores absolute, multiplying by
                     // the map's RMSD under the hood). Pass straight through
-                    // as absolute_isovalue.
+                    // as absolute_isovalue. For a map that was just loaded
+                    // and never UI-adjusted, the Redux entry is missing —
+                    // fall back to the map's own suggestedContourLevel
+                    // (set by Coot's auto-fit at load time) so the export
+                    // still matches what's on screen.
                     const contourAbsolute: number | null = typeof params?.contourLevel === "number"
                         ? params.contourLevel
-                        : null;
+                        : (typeof m.suggestedContourLevel === "number" ? m.suggestedContourLevel : null);
 
                     mapInputs.push({
                         name: m.name,
@@ -109,6 +114,7 @@ export const ExportMvsViewer = () => {
             const mvsJson = buildMvsJson({
                 molecules: mols,
                 maps: mapInputs,
+                camera: captureCamera(),
                 title: `PyKeko — ${mols.map(m => m.name).join(", ")}`,
             });
             const suggestedName = (mols[0]?.name || "pykeko") + "_viewer.html";
