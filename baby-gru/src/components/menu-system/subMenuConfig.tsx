@@ -207,7 +207,7 @@ export const subMenuMap: SubMenuMap = {
             },
             {
                 id: "export-mvs-viewer",
-                label: "Export portable viewer (HTML)…",
+                label: "Export portable viewer (.html)…",
                 type: "customJSX",
                 keywords: ["export", "html", "viewer", "molstar", "share", "portable"],
                 description: "Save a self-contained Mol* viewer HTML capturing the current scene",

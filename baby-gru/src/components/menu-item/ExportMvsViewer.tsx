@@ -153,7 +153,7 @@ export const ExportMvsViewer = () => {
 
     return (
         <MoorhenMenuItem onClick={handleClick}>
-            Export portable viewer (HTML)…
+            Export portable viewer (.html)…
         </MoorhenMenuItem>
     );
 };
