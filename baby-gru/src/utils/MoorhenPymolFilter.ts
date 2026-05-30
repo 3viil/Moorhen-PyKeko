@@ -25,7 +25,10 @@ type AtomRec = {
     res_no: number;
     res_name: string;
     name: string;
-    alt_conf: string;
+    // Moorhen's gemmi binding emits `alt_loc` (matching the gemmi C++ field);
+    // older code referenced `alt_conf`. Treat both as optional for safety.
+    alt_loc?: string;
+    alt_conf?: string;
     element: string;
     tempFactor: number;
     occupancy: number;
@@ -85,7 +88,7 @@ const matchPred = (node: SelNode, atom: AtomRec): boolean => {
                     case "resn": return atom.res_name;
                     case "name": return atom.name;
                     case "elem": return atom.element;
-                    case "alt": return atom.alt_conf;
+                    case "alt": return atom.alt_loc ?? atom.alt_conf ?? "";
                     case "segi": return ""; // not exposed by Moorhen atom records
                 }
             })().toString().toUpperCase().trim();
@@ -265,8 +268,67 @@ const expandBymolecule = (matched: Set<number>, graph: Map<number, number[]>): S
     return out;
 };
 
+// True iff the sub-tree contains any node that isn't a pure per-atom
+// predicate — i.e. anything matchPred can't evaluate on a single atom.
+// Used to decide whether `and`/`or`/`not` need set semantics (slow, correct)
+// or can stay in the matchPred per-atom path (fast).
+const hasSetOp = (node: SelNode): boolean => {
+    switch (node.kind) {
+        case "byres": case "bychain": case "byobject": case "bysegi":
+        case "bymolecule": case "bymodel": case "bound_to": case "neighbor":
+        case "extend": case "dist": case "first": case "last":
+            return true;
+        case "and": case "or":
+            return hasSetOp(node.l) || hasSetOp(node.r);
+        case "not":
+            return hasSetOp(node.inner);
+        default:
+            return false;
+    }
+};
+
+// Per-atom evaluation path — fast for pure per-atom predicate trees.
+// Called from the default branch of evaluateNode and from the and/or/not
+// cases when no set-level op is involved.
+const evaluatePerAtom = (node: SelNode, atoms: AtomRec[]): Set<number> => {
+    const out = new Set<number>();
+    for (let i = 0; i < atoms.length; i++) {
+        if (matchPred(node, atoms[i])) out.add(i);
+    }
+    return out;
+};
+
 const evaluateNode = (node: SelNode, atoms: AtomRec[], graph: () => Map<number, number[]>): Set<number> => {
     switch (node.kind) {
+        // `and`/`or`/`not` of pure per-atom predicates stay in the fast matchPred
+        // path. When a child contains a set-level op like `dist` or `byres`, we
+        // MUST decompose into set operations — matchPred returns false for
+        // set-level ops, which would silently kill the AND/OR/NOT.
+        case "and": {
+            if (!hasSetOp(node.l) && !hasSetOp(node.r)) return evaluatePerAtom(node, atoms);
+            const l = evaluateNode(node.l, atoms, graph);
+            const r = evaluateNode(node.r, atoms, graph);
+            const out = new Set<number>();
+            // Iterate the smaller set for the lookup.
+            const [small, big] = l.size <= r.size ? [l, r] : [r, l];
+            for (const i of small) if (big.has(i)) out.add(i);
+            return out;
+        }
+        case "or": {
+            if (!hasSetOp(node.l) && !hasSetOp(node.r)) return evaluatePerAtom(node, atoms);
+            const l = evaluateNode(node.l, atoms, graph);
+            const r = evaluateNode(node.r, atoms, graph);
+            const out = new Set<number>(l);
+            for (const i of r) out.add(i);
+            return out;
+        }
+        case "not": {
+            if (!hasSetOp(node.inner)) return evaluatePerAtom(node, atoms);
+            const inner = evaluateNode(node.inner, atoms, graph);
+            const out = new Set<number>();
+            for (let i = 0; i < atoms.length; i++) if (!inner.has(i)) out.add(i);
+            return out;
+        }
         case "byres": {
             const inner = evaluateNode(node.inner, atoms, graph);
             return expandByres(inner, atoms);

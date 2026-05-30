@@ -142,6 +142,59 @@ describe("evaluateSelectionForMolecule: byres + topology", () => {
     });
 });
 
+describe("evaluateSelectionForMolecule: and/or/not with set-level children", () => {
+    // Regression for the bug where matchPred returned false for `dist`,
+    // silently killing AND/OR/NOT whose child was a set-level op like
+    // `within ... of`. Without the fix, `byres organic within 6 of chain A`
+    // returns 0 even when there's organic atoms 6 Å from chain A.
+
+    test("organic-and-within: returns the organic atoms near chain A", async () => {
+        // Add an organic ligand near chain A (within 6 Å of ALA/1).
+        const atoms = makeAtoms();
+        atoms.push({ x:3, y:3, z:0, chain_id:"L", res_no:200, res_name:"LIG",
+                     name:"C1", alt_conf:"", element:"C", tempFactor:30, occupancy:1, serial:13 });
+        const mol = makeMockMolecule(atoms);
+        const ast = parseSelection("byres organic within 6 of chain A");
+        const cids = await evaluateSelectionForMolecule(ast, mol);
+        expect(cids).toContain("//L/200");
+    });
+
+    test("polymer-and-within: protein atoms near solvent", async () => {
+        // Move HOH close to GLY/2 so polymer-within-3-of-solvent picks GLY/2.
+        const atoms = makeAtoms();
+        atoms[11].x = 4; atoms[11].y = 0; atoms[11].z = 0;  // HOH adjacent to GLY/2 N
+        const mol = makeMockMolecule(atoms);
+        const ast = parseSelection("byres polymer within 3 of solvent");
+        const cids = await evaluateSelectionForMolecule(ast, mol);
+        expect(cids).toContain("//A/2");
+    });
+
+    test("OR of chain-pred and set-level produces the union", async () => {
+        const mol = makeMockMolecule(makeAtoms());
+        // chain B (HEM residue) OR within-2-of-resn-HEM. Should at least include the HEM residue.
+        const ast = parseSelection("chain B or (chain A within 2 of resn HEM)");
+        const cids = await evaluateSelectionForMolecule(ast, mol);
+        expect(cids).toContain("//B/101");
+    });
+
+    test("NOT of a set-level expression complements correctly", async () => {
+        const mol = makeMockMolecule(makeAtoms());
+        const ast = parseSelection("not (byres resn HEM)");
+        const cids = await evaluateSelectionForMolecule(ast, mol);
+        expect(cids).not.toContain("//B/101");
+        // chain A residues should still be present
+        expect(cids).toEqual(expect.arrayContaining(["//A/1", "//A/2", "//A/3"]));
+    });
+
+    test("pure-predicate AND/OR/NOT still works (fast path unchanged)", async () => {
+        const mol = makeMockMolecule(makeAtoms());
+        const ast = parseSelection("chain A and not resn GLY");
+        const cids = await evaluateSelectionForMolecule(ast, mol);
+        expect(cids).toEqual(expect.arrayContaining(["//A/1", "//A/3"]));
+        expect(cids).not.toContain("//A/2");
+    });
+});
+
 describe("coalesceResidueCids: contiguous range collapse", () => {
     test("merges contiguous residues into ranges", () => {
         const input = ["//A/1", "//A/2", "//A/3", "//A/5"];
