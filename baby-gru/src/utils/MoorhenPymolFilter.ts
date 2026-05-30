@@ -132,8 +132,14 @@ const matchPred = (node: SelNode, atom: AtomRec): boolean => {
                 case "metals": return isMetal(atom.element);
                 case "ions": return isMetal(atom.element) || /^(CL|BR|I|F)$/.test(atom.element.toUpperCase());
                 case "lig": return !isProtein(r) && !isNucleic(r) && !isSolvent(r) && !isMetal(atom.element);
-                case "organic": return !isProtein(r) && !isNucleic(r) && /^(C|N|O|S|P|H)$/.test(atom.element.toUpperCase());
-                case "inorganic": return !/^(C|N|O|S|P|H)$/.test(atom.element.toUpperCase());
+                // PyMOL `organic`: non-polymer organic compounds, EXCLUDING water
+                // and ions. The pre-fix version missed the `!isSolvent` clause,
+                // so `show spheres, organic` lit up every water oxygen — not what
+                // PyMOL users expect (and not what gives a clean ligand view).
+                case "organic": return !isProtein(r) && !isNucleic(r) && !isSolvent(r) && /^(C|N|O|S|P|H)$/.test(atom.element.toUpperCase());
+                // PyMOL `inorganic`: ions / metals / non-organic-element atoms,
+                // excluding polymer and water (which have their own selectors).
+                case "inorganic": return !isProtein(r) && !isNucleic(r) && !isSolvent(r) && !/^(C|N|O|S|P|H)$/.test(atom.element.toUpperCase());
                 case "backbone":
                     return isProtein(r) ? PROTEIN_BACKBONE.has(n) : isNucleic(r) ? NUCLEIC_BACKBONE.has(n) : false;
                 case "sidechain":

@@ -56,6 +56,27 @@ describe("evaluateSelectionForMolecule: macros", () => {
         expect(cids).not.toContain("//B/101");
     });
 
+    test("organic excludes waters (was a bug: 'organic' was hitting HOH oxygens)", async () => {
+        const mol = makeMockMolecule(makeAtoms());
+        const ast = parseSelection("organic");
+        const cids = await evaluateSelectionForMolecule(ast, mol);
+        // HOH water is C/N/O/S/P-element but should not be classified as organic.
+        expect(cids).not.toContain("//W/1");
+        // HEM remains organic (non-polymer, non-solvent, organic elements).
+        expect(cids).toContain("//B/101");
+    });
+
+    test("inorganic excludes polymer AND solvent (was a bug)", async () => {
+        const mol = makeMockMolecule(makeAtoms());
+        const ast = parseSelection("inorganic");
+        const cids = await evaluateSelectionForMolecule(ast, mol);
+        // Mock atoms have no metals/non-CHNOPS, so inorganic == empty;
+        // critically, it shouldn't accidentally include water or amino acids.
+        expect(cids).not.toContain("//A/1");
+        expect(cids).not.toContain("//A/2");
+        expect(cids).not.toContain("//W/1");
+    });
+
     test("hetatm picks HEM (non-standard, non-solvent)", async () => {
         // This implementation treats hetatm/het identically as
         // "non-protein, non-nucleic, non-solvent" — matches PyMOL's `het`
