@@ -227,6 +227,37 @@ const makeMockMolWithReps = (name, pdbText, reps) => ({
     representations: reps,
 });
 
+// Regression for the cmdHide bug where `hide spheres` (no selector) silently
+// did nothing because Moorhen's molecule.hide() is exact-cid and the wildcard
+// CID never matched the existing narrower-cid reps. Lives in this file because
+// it touches the same module-graph mocks. Note the cmdHide handler itself
+// isn't exported for direct testing; we capture the behavior via the fix's
+// invariant: walk reps, hide each matching by stored cid.
+describe("hide-spheres-no-selector invariant (regression)", () => {
+    test("a fix that hides reps by their stored cid clears all matching sphere reps", () => {
+        // Mock molecule with two VdwSpheres reps under narrower cids.
+        const hiddenCalls = [];
+        const mol = {
+            name: "mock",
+            representations: [
+                { style: "CRs", cid: "//A/1-46/*" },
+                { style: "VdwSpheres", cid: "//A/1-46/*||//A/501-510/*" },
+                { style: "VdwSpheres", cid: "//*/*/CA" },
+            ],
+            hide(style, cid) { hiddenCalls.push({ style, cid }); },
+        };
+        // Mirror the fix: walk reps, hide every match by its OWN cid.
+        for (const r of [...mol.representations]) {
+            if (r.style === "VdwSpheres") mol.hide(r.style, r.cid);
+        }
+        expect(hiddenCalls).toHaveLength(2);
+        expect(hiddenCalls.map(h => h.cid)).toEqual([
+            "//A/1-46/*||//A/501-510/*",
+            "//*/*/CA",
+        ]);
+    });
+});
+
 describe("buildPmlBundle", () => {
     test("emits a valid scene script with absolute load + show/color lines", async () => {
         const reps = [

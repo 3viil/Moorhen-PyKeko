@@ -568,6 +568,11 @@ const cmdShow = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => 
 const cmdHide = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => {
     const repKey = cmd.args[0]?.trim().toLowerCase();
     const selArg = cmd.args[1];
+    // Detect "no selector": PyMOL treats `hide spheres` (one arg) as "all" implicitly.
+    // We need to know this BEFORE resolveSelection so we can do an exact rep-style sweep
+    // rather than the cid-targeted hide (Moorhen's hide is exact-cid; the wildcard `//*`
+    // won't match a rep stored under a narrower cid like `//A/200/*`).
+    const noSelector = !selArg || selArg.trim() === "" || selArg.trim() === "all" || selArg.trim() === "*";
     const targets = await resolveSelection(selArg, env, registry);
     for (const { molecule, cid } of targets) {
         if (!repKey || repKey === "everything") {
@@ -580,8 +585,20 @@ const cmdHide = async (cmd: PymolCommand, env: any, registry: PymolRegistry) => 
                 console.warn(`[pymol:${cmd.lineNo}] hide: unsupported "${repKey}"`);
                 continue;
             }
-            try { molecule.hide(style, normalizeCidForMoorhen(cid)); }
-            catch (e) { console.warn(`[pymol:${cmd.lineNo}] hide ${repKey} on ${molecule.name}:`, e); }
+            if (noSelector) {
+                // `hide spheres` (no selector): sweep every rep of the named style on this
+                // molecule and hide it under its own stored cid. Without this loop, the
+                // wildcard cid from resolveSelection wouldn't match any narrower-cid reps
+                // (Moorhen's molecule.hide is exact-cid) and the hide silently does nothing.
+                for (const r of [...(molecule.representations as moorhen.MoleculeRepresentation[])]) {
+                    if (r.style === style) {
+                        try { molecule.hide(r.style, r.cid); } catch (e) { /* skip stale */ }
+                    }
+                }
+            } else {
+                try { molecule.hide(style, normalizeCidForMoorhen(cid)); }
+                catch (e) { console.warn(`[pymol:${cmd.lineNo}] hide ${repKey} on ${molecule.name}:`, e); }
+            }
         }
     }
 };
